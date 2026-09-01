@@ -1,7 +1,7 @@
 ---
-title: "Set Up Tinyproxy as a Transparent Proxy"
+title: "Set Up Tinyproxy as a Transparent HTTP Proxy Server"
 sidebarTitle: "Transparent Proxy"
-description: "Intercept HTTP traffic without any client configuration by redirecting packets to Tinyproxy using iptables or pf firewall rules."
+description: "Intercept HTTP traffic without any client configuration by redirecting packets to Tinyproxy using iptables or pf firewall rules on Linux and BSD."
 ---
 
 Transparent proxying lets you route HTTP traffic through Tinyproxy without configuring anything on the client. Instead of pointing a browser or application at a proxy address, the firewall intercepts outbound connections and silently redirects them to Tinyproxy's listening port. From the client's perspective the connection looks direct; Tinyproxy handles the forwarding entirely behind the scenes. This is especially useful for embedded devices, managed networks, or any scenario where you cannot (or do not want to) configure individual clients.

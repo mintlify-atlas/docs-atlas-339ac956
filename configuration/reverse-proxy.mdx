@@ -1,5 +1,5 @@
 ---
-title: "Configure Tinyproxy as a Reverse Proxy"
+title: "How to Configure Tinyproxy as a Reverse Proxy Server"
 sidebarTitle: "Reverse Proxy"
 description: "Use Tinyproxy's reverse proxy mode to aggregate multiple back-end sites behind a single endpoint. Configure path-based routing and redirect rewriting."
 ---
@@ -16,7 +16,7 @@ Each `ReversePath` directive creates a mapping from a URL prefix (a path on the 
 
 For example, with the mapping `ReversePath "/app/" "http://backend.internal:8080/"`, a client request for `http://proxy:8888/app/index.html` is forwarded to `http://backend.internal:8080/index.html`.
 
-Paths are matched against the request URL from the beginning. Tinyproxy walks the list of `ReversePath` rules and uses the first rule whose path is a prefix of the requested URL. If no rule matches, Tinyproxy returns an error (or falls through to forward proxy mode if `ReverseOnly` is not set).
+Paths are matched against the request URL from the beginning. Tinyproxy walks the configured `ReversePath` rules and uses the **last rule** in the configuration file whose path is a prefix of the requested URL (rules defined later in the file take precedence). If no rule matches, Tinyproxy returns an error, or falls through to forward proxy mode if `ReverseOnly` is not set.
 
 ## Reverse Proxy Directives
 

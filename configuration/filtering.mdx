@@ -1,5 +1,5 @@
 ---
-title: "Domain and URL Filtering with Filter Rules"
+title: "Domain and URL Filtering with Tinyproxy Filter Rules"
 sidebarTitle: "Filtering"
 description: "Block or allow web traffic using domain or URL pattern rules. Supports POSIX BRE, ERE, and fnmatch syntax with configurable default policy."
 ---
@@ -45,6 +45,18 @@ Tinyproxy's filtering system lets you control which domains and URLs clients can
 
   ```ini
   FilterCaseSensitive Yes
+  ```
+</ParamField>
+
+<ParamField body="FilterExtended" type="boolean" deprecated>
+  **Deprecated.** Use `FilterType ere` instead. When set to `Yes`, enables POSIX Extended Regular Expressions for filter rule matching. This directive is retained for backwards compatibility but emits a deprecation warning at startup. New configurations should use `FilterType ere` to enable ERE matching.
+
+  ```ini
+  # Deprecated — use FilterType ere instead
+  # FilterExtended Yes
+
+  # Correct modern equivalent:
+  FilterType ere
   ```
 </ParamField>
 

@@ -1,7 +1,7 @@
 ---
-title: "Require HTTP Basic Authentication on Tinyproxy"
+title: "HTTP Basic Authentication Setup for Tinyproxy Daemon"
 sidebarTitle: "Authentication"
-description: "Protect your Tinyproxy instance with HTTP Basic Authentication. Configure credentials and customize the authentication realm."
+description: "Protect your Tinyproxy instance with HTTP Basic Authentication. Configure username and password credentials and customize the realm."
 ---
 
 By default, access to Tinyproxy is controlled solely by its `Allow`/`Deny` IP-address rules. For deployments that are reachable from untrusted networks — or where you want user-level accountability rather than just network-level access control — Tinyproxy supports HTTP Basic Authentication at the proxy level. When credentials are configured, every client must supply a valid username and password in the `Proxy-Authorization` header before Tinyproxy will forward any request. Clients that do not authenticate receive a `407 Proxy Authentication Required` response.

@@ -1,7 +1,7 @@
 ---
-title: "tinyproxy.conf: Complete Configuration Reference"
+title: "tinyproxy.conf: Complete Configuration Options Reference"
 sidebarTitle: "Config Options"
-description: "Every configuration directive for tinyproxy.conf — syntax, type, default values, and examples for all parameters."
+description: "Every tinyproxy.conf directive explained with syntax, accepted values, default values, and working examples for all configuration parameters."
 ---
 
 This page is the comprehensive reference for every directive supported in `tinyproxy.conf`. The configuration file uses simple `key value` pairs, one per line. Lines beginning with `#` and blank lines are treated as comments and ignored. **Directive names are case-insensitive**; values are case-sensitive. Some string values must be enclosed in double quotes (`"`) as noted for each directive below. The file is typically located at `/etc/tinyproxy/tinyproxy.conf`, or you can specify an alternative path with the `-c` flag.
@@ -331,9 +331,18 @@ This page is the comprehensive reference for every directive supported in `tinyp
   ```
 </ParamField>
 
-<Warning>
-  **`FilterExtended` is deprecated.** Use `FilterType ere` instead. If `FilterExtended Yes` is set, Tinyproxy will emit a deprecation warning and enable ERE matching, but you should migrate to the explicit `FilterType` directive.
-</Warning>
+<ParamField query="FilterExtended" type="boolean" deprecated>
+  **Deprecated.** Use `FilterType ere` instead. When set to `Yes`, Tinyproxy uses POSIX extended regular expressions (ERE) for filter rule matching. If this directive is set, Tinyproxy emits a deprecation warning and falls back to ERE matching. Migrate to the explicit `FilterType ere` directive.
+
+  <Warning>
+    `FilterExtended` is deprecated and may be removed in a future release. Replace `FilterExtended Yes` with `FilterType ere` in your configuration.
+  </Warning>
+
+  ```ini
+  # Deprecated — use FilterType ere instead
+  FilterExtended Yes
+  ```
+</ParamField>
 
 ---
 

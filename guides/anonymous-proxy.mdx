@@ -1,7 +1,7 @@
 ---
 title: "Enable Anonymous Proxying to Strip Request Headers"
 sidebarTitle: "Anonymous Proxy"
-description: "Configure Tinyproxy to selectively forward only specified HTTP request headers, stripping all others to protect client privacy."
+description: "Configure Tinyproxy to selectively forward only specified HTTP request headers, stripping all others to protect client privacy and reduce tracking."
 ---
 
 By default, Tinyproxy forwards all HTTP request headers from the client to the upstream server. This means identifying information — such as the browser's `User-Agent` string, the referring page in `Referer`, and any custom headers added by the operating system or application — reaches the destination server unchanged. Enabling anonymous proxying reverses this behaviour: you declare an explicit allowlist of headers, and Tinyproxy discards everything else before passing the request upstream. This gives you fine-grained control over what information about your clients leaks through the proxy.
@@ -28,7 +28,7 @@ Anonymous "Authorization"
 Anonymous "Cookie"
 ```
 
-Any header name that appears in an actual HTTP request is eligible. The comparison is performed against the header names exactly as they arrive (after Tinyproxy's internal normalisation to lower-case for lookup purposes), so use the canonical capitalisation shown in the RFC — `User-Agent`, `Referer`, `Accept-Language`, and so on.
+Any header name that appears in an actual HTTP request is eligible. The comparison is case-insensitive (implemented via `strcasecmp` in the internal hash table), so `Cookie`, `cookie`, and `COOKIE` all match the same allowlist entry. Using the canonical RFC capitalisation — `User-Agent`, `Referer`, `Accept-Language`, and so on — is recommended for readability.
 
 ## Commonly Allowed Headers
 

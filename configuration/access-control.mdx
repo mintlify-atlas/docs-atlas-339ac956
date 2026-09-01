@@ -1,7 +1,7 @@
 ---
-title: "Client Access Control with Allow and Deny Rules"
+title: "Tinyproxy Access Control with Allow and Deny Rules"
 sidebarTitle: "Access Control"
-description: "Restrict or permit proxy access by IP address, CIDR range, or hostname using ordered Allow and Deny directives in tinyproxy.conf."
+description: "Restrict or permit proxy access by IP address, CIDR range, or hostname using ordered Allow and Deny directives in your tinyproxy.conf file."
 ---
 
 By default, when no access control rules are present, Tinyproxy permits connections from any client. Adding even a single `Allow` or `Deny` directive switches the proxy into an explicit-policy mode: every connection is tested against the ordered rule list, and any client that does not match an `Allow` rule is rejected. Understanding how rules are evaluated and ordered is essential before putting Tinyproxy on a network where untrusted clients could reach it.

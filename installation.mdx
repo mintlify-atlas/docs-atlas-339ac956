@@ -1,7 +1,7 @@
 ---
-title: "Install Tinyproxy from Source or Package Manager"
+title: "Installing Tinyproxy from Source or Package Manager"
 sidebarTitle: "Installation"
-description: "Build Tinyproxy from source using GNU autotools, or install it via common Linux package managers. Includes all configure flags."
+description: "Build Tinyproxy 1.11.3 from source using GNU autotools, or install it via common Linux package managers. Covers all configure flags and defaults."
 ---
 
 Tinyproxy 1.11.3 ships as a standard GNU autotools project, which means you can build it on any POSIX-compliant system with a C compiler and a handful of common build tools. For mainstream Linux distributions, pre-built packages are available through the native package manager and are the fastest way to get started. Either path results in the same `tinyproxy` binary and the same configuration file format.
@@ -101,7 +101,7 @@ sudo pacman -S tinyproxy
     ```
 
     The installed files land in:
-    - **Binary:** `$prefix/sbin/tinyproxy`
+    - **Binary:** `$prefix/bin/tinyproxy`
     - **Config:** `$sysconfdir/tinyproxy/tinyproxy.conf`
     - **Logs:** `$localstatedir/log/tinyproxy/tinyproxy.log`
     - **PID file:** `$runstatedir/tinyproxy/tinyproxy.pid`

@@ -1,7 +1,7 @@
 ---
-title: "Tinyproxy Configuration File Overview"
+title: "Tinyproxy Configuration File: Syntax and Core Directives"
 sidebarTitle: "Overview"
-description: "Understand the tinyproxy.conf format, file location, syntax rules, and the core directives that every deployment needs."
+description: "Learn the tinyproxy.conf format, file location, syntax rules, and every core directive needed for a complete, working Tinyproxy deployment."
 ---
 
 Tinyproxy is configured through a single plain-text file that controls every aspect of the daemon's behavior — from the port it listens on to the user it runs as, connection limits, and logging. Getting familiar with the file's structure and core directives before enabling optional features like filtering or upstream proxying will save you troubleshooting time and make your configuration easier to maintain.
@@ -108,6 +108,126 @@ These directives form the foundation of every Tinyproxy deployment. The `Port` d
 
   ```ini
   PidFile "/run/tinyproxy/tinyproxy.pid"
+  ```
+</ParamField>
+
+## Logging Directives
+
+<ParamField body="LogFile" type="string">
+  Path to the file where Tinyproxy writes debug and connection log output. The value must be enclosed in double quotes. Mutually exclusive with `Syslog` — only one of the two may be active. If neither is specified, output goes to stdout.
+
+  ```ini
+  LogFile "/var/log/tinyproxy/tinyproxy.log"
+  ```
+</ParamField>
+
+<ParamField body="Syslog" type="boolean">
+  When set to `On`, Tinyproxy sends log output to syslog instead of a log file. Mutually exclusive with `LogFile`.
+
+  ```ini
+  Syslog On
+  ```
+</ParamField>
+
+<ParamField body="LogLevel" type="string">
+  Controls the minimum severity of messages that are logged. Messages at the configured level and above are output; messages below are suppressed. Valid values (from least to most verbose) are:
+
+  - `Critical`
+  - `Error`
+  - `Warning`
+  - `Notice`
+  - `Connect` — logs connections without the noise of `Info`
+  - `Info`
+
+  ```ini
+  LogLevel Notice
+  ```
+</ParamField>
+
+## Header and Identity Directives
+
+<ParamField body="ViaProxyName" type="string">
+  RFC 2616 requires proxies to add a `Via` header to forwarded requests. By default Tinyproxy uses the server's actual hostname. Setting `ViaProxyName` substitutes an alternative string, avoiding disclosure of the real hostname. The value must be enclosed in double quotes.
+
+  ```ini
+  ViaProxyName "tinyproxy"
+  ```
+</ParamField>
+
+<ParamField body="DisableViaHeader" type="boolean">
+  When set to `Yes`, Tinyproxy omits the `Via` header entirely, effectively operating in stealth mode. Note that RFC 2616 requires the `Via` header; enabling this option breaks HTTP compliance.
+
+  ```ini
+  DisableViaHeader Yes
+  ```
+</ParamField>
+
+<ParamField body="XTinyproxy" type="boolean">
+  When set to `Yes`, Tinyproxy adds an `X-Tinyproxy` header containing the client's IP address to each forwarded request. Requires the binary to have been compiled with `--enable-xtinyproxy`.
+
+  ```ini
+  XTinyproxy Yes
+  ```
+</ParamField>
+
+<ParamField body="AddHeader" type="string string">
+  Adds a custom HTTP header to all outgoing HTTP requests that Tinyproxy forwards. Both the header name and value must be enclosed in double quotes. This directive may be specified multiple times. Note that this option has no effect on HTTPS traffic, because Tinyproxy cannot inspect or modify the tunneled HTTPS stream.
+
+  ```ini
+  AddHeader "X-My-Header" "Powered by Tinyproxy"
+  ```
+</ParamField>
+
+## Authentication Directives
+
+<ParamField body="BasicAuth" type="string string">
+  Configures HTTP Basic Authentication for proxy access. When one or more `BasicAuth` entries are present, clients must supply valid credentials in the `Proxy-Authorization` header. The username and password are provided as two space-separated arguments (no quotes required).
+
+  ```ini
+  BasicAuth alice s3cr3tpassword
+  ```
+</ParamField>
+
+<ParamField body="BasicAuthRealm" type="string">
+  Sets the realm string returned in the HTTP 407 `Proxy Authentication Required` response when `BasicAuth` is configured. The value must be enclosed in double quotes. Defaults to `Tinyproxy` if not set.
+
+  ```ini
+  BasicAuthRealm "My Proxy"
+  ```
+</ParamField>
+
+## Error Page Directives
+
+<ParamField body="ErrorFile" type="integer string">
+  Defines the HTML file returned to clients when a specific HTTP error code occurs. Takes two arguments: the numeric error code and the path to the HTML file (in double quotes). May be specified multiple times for different error codes.
+
+  ```ini
+  ErrorFile 404 "/usr/share/tinyproxy/404.html"
+  ErrorFile 503 "/usr/share/tinyproxy/503.html"
+  ```
+</ParamField>
+
+<ParamField body="DefaultErrorFile" type="string">
+  The HTML file returned when an error occurs for which no specific `ErrorFile` has been configured. The value must be enclosed in double quotes.
+
+  ```ini
+  DefaultErrorFile "/usr/share/tinyproxy/default.html"
+  ```
+</ParamField>
+
+<ParamField body="StatHost" type="string">
+  A hostname or IP address treated as the statistics host. Any request destined for this host returns Tinyproxy's internal statistics page rather than forwarding the request. The value must be enclosed in double quotes. The compiled-in default is `tinyproxy.stats`.
+
+  ```ini
+  StatHost "tinyproxy.stats"
+  ```
+</ParamField>
+
+<ParamField body="StatFile" type="string">
+  The HTML template file returned in response to requests for the `StatHost`. If not set, Tinyproxy returns a built-in basic statistics page. The value must be enclosed in double quotes.
+
+  ```ini
+  StatFile "/usr/share/tinyproxy/stats.html"
   ```
 </ParamField>
 

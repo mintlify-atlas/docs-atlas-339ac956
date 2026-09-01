@@ -1,32 +1,23 @@
 ---
-title: "Runtime Control: Signals and Process Management"
+title: "Runtime Control: Tinyproxy Signals and Process Management"
 sidebarTitle: "Signals & Runtime"
-description: "Send POSIX signals to a running Tinyproxy daemon to reload configuration, garbage collect connections, and manage the process lifecycle."
+description: "Send POSIX signals to a running Tinyproxy daemon to reload configuration and filter lists, and manage the process lifecycle with systemd."
 ---
 
 Tinyproxy is a long-running daemon and, like most POSIX services, exposes its runtime controls through signals. Rather than stopping and restarting the process to pick up a new configuration or clear stale connection state, you can send the appropriate signal to the running process and Tinyproxy responds immediately — without interrupting active proxy connections. This guide covers every signal Tinyproxy handles, how to send them using the PID file, and how to integrate Tinyproxy with service supervisors such as systemd.
 
 ## Supported Signals
 
-### SIGHUP — Garbage Collection
+### SIGHUP and SIGUSR1 — Configuration and Filter Reload
 
-`SIGHUP` instructs Tinyproxy to perform an immediate garbage collection pass on its internal connections linked list. Stale or closed connection records that have not yet been freed are released.
+Both `SIGHUP` and `SIGUSR1` tell Tinyproxy to re-read `tinyproxy.conf` and reload the filter list from the path specified in the `Filter` directive. The reload applies to the live running process — active connections are not dropped.
 
-Under normal operation this cleanup happens automatically after a certain number of connections have been processed. Sending `SIGHUP` forces it on demand, which can be useful when memory use appears elevated or you want to ensure clean connection state before a maintenance window.
+This is the primary mechanism for applying configuration changes without a service restart. Any directive that can be changed at runtime (log level, filter rules, allow/deny lists, and so on) takes effect immediately after the signal is processed. Both signals set the same internal `received_sighup` flag, which is checked in the main connection loop; the reload then calls `reload_config()` and `filter_reload()`.
 
 ```
 Signal:   SIGHUP
-Effect:   Force garbage collection on the connections linked list
-Note:     Effective in daemon mode only
-```
+Effect:   Reload configuration file and filter list (daemon mode only)
 
-### SIGUSR1 — Configuration and Filter Reload
-
-`SIGUSR1` tells Tinyproxy to re-read `tinyproxy.conf` and reload the filter list from the path specified in the `Filter` directive. The reload applies to the live running process — active connections are not dropped.
-
-This is the primary mechanism for applying configuration changes without a service restart. Any directive that can be changed at runtime (log level, filter rules, allow/deny lists, and so on) takes effect immediately after the signal is processed.
-
-```
 Signal:   SIGUSR1
 Effect:   Reload configuration file and filter list
 Note:     Active connections are preserved during the reload
@@ -64,10 +55,10 @@ PidFile "/run/tinyproxy/tinyproxy.pid"
 With the PID file in place, signals can be sent as follows:
 
 ```bash
-# Reload configuration file and filter list
+# Reload configuration file and filter list (via SIGUSR1)
 kill -USR1 $(cat /run/tinyproxy/tinyproxy.pid)
 
-# Force garbage collection on the connections linked list
+# Reload configuration file and filter list (via SIGHUP, daemon mode only)
 kill -HUP $(cat /run/tinyproxy/tinyproxy.pid)
 
 # Graceful shutdown
