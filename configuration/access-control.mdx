@@ -1,0 +1,146 @@
+---
+title: "Client Access Control with Allow and Deny Rules"
+sidebarTitle: "Access Control"
+description: "Restrict or permit proxy access by IP address, CIDR range, or hostname using ordered Allow and Deny directives in tinyproxy.conf."
+---
+
+By default, when no access control rules are present, Tinyproxy permits connections from any client. Adding even a single `Allow` or `Deny` directive switches the proxy into an explicit-policy mode: every connection is tested against the ordered rule list, and any client that does not match an `Allow` rule is rejected. Understanding how rules are evaluated and ordered is essential before putting Tinyproxy on a network where untrusted clients could reach it.
+
+## How ACLs Work
+
+Tinyproxy evaluates `Allow` and `Deny` directives in the order they appear in the configuration file. When an incoming connection arrives, Tinyproxy walks the list from top to bottom and returns a decision on the **first rule that matches** the client's address or hostname.
+
+The critical default-behavior rule is:
+
+- **If no `Allow` or `Deny` lines are present**, all clients are permitted.
+- **If any `Allow` or `Deny` line is present**, the default action becomes **deny**. Any client that does not match any rule is rejected.
+
+This means that adding `Allow 192.168.1.0/24` without also adding `Allow 127.0.0.1` will block localhost access to the proxy.
+
+<Note>
+  Rule evaluation stops at the **first match**. A later rule that contradicts an earlier one has no effect for clients already matched by the earlier rule. Place more specific rules before more general ones if you need to carve out exceptions.
+</Note>
+
+## Allow and Deny Directives
+
+Both directives accept the same argument formats: a single IP address (IPv4 or IPv6), a CIDR network range, or a string matched against the end of the client's hostname.
+
+<ParamField body="Allow" type="string">
+  Permits access for clients matching the argument. Can appear multiple times to build an allowlist.
+
+  **Single IPv4 address:**
+  ```ini
+  Allow 127.0.0.1
+  ```
+
+  **Single IPv6 address:**
+  ```ini
+  Allow ::1
+  ```
+
+  **IPv4 CIDR range** — allows any address in `192.168.0.0/24`:
+  ```ini
+  Allow 192.168.0.1/24
+  ```
+
+  **Domain suffix** — allows any client whose reverse-DNS hostname ends with `.example.com`:
+  ```ini
+  Allow .example.com
+  ```
+
+  A full hostname is also valid:
+  ```ini
+  Allow host.example.com
+  ```
+</ParamField>
+
+<ParamField body="Deny" type="string">
+  Rejects access for clients matching the argument. Accepts exactly the same formats as `Allow`. Use `Deny` to block specific addresses within a broader `Allow` range by placing the `Deny` rule first.
+
+  ```ini
+  # Block a specific bad actor within an otherwise allowed subnet
+  Deny 192.168.1.99
+  Allow 192.168.1.0/24
+  ```
+</ParamField>
+
+<Warning>
+  Domain-based rules (hostnames and domain suffixes) require Tinyproxy to perform a **reverse DNS lookup** for every new incoming connection. On a busy proxy or in environments with slow DNS resolution, this can measurably increase connection setup time. Prefer IP address or CIDR rules whenever possible, and use domain-based rules only when IP addresses are not predictable.
+</Warning>
+
+## ConnectPort
+
+The `CONNECT` method is used by clients to establish HTTPS tunnels through a proxy. Without restrictions, a client could use `CONNECT` to reach any TCP port, potentially tunneling arbitrary protocols through your proxy.
+
+<ParamField body="ConnectPort" type="integer">
+  Adds a port number to the list of ports that are allowed for the HTTP `CONNECT` method. The directive may be specified multiple times to permit multiple ports. 
+
+  - If **no `ConnectPort` lines are present**, all ports are allowed (the default).
+  - If **any `ConnectPort` lines are present**, only the listed ports are permitted for `CONNECT`.
+  - Setting the value to **`0`** disables the `CONNECT` method entirely.
+
+  **Allow only standard HTTPS and NNTPS ports:**
+  ```ini
+  ConnectPort 443
+  ConnectPort 563
+  ```
+
+  **Disable CONNECT entirely** (forward proxy for plain HTTP only):
+  ```ini
+  ConnectPort 0
+  ```
+</ParamField>
+
+## Examples
+
+### Localhost-Only Proxy
+
+The most restrictive useful configuration — only the machine running Tinyproxy can use it:
+
+```ini tinyproxy.conf
+Allow 127.0.0.1
+Allow ::1
+```
+
+### LAN Subnet with Restricted CONNECT
+
+Allow an entire RFC 1918 subnet while limiting HTTPS tunnels to the standard port:
+
+```ini tinyproxy.conf
+Allow 10.0.0.0/8
+
+ConnectPort 443
+ConnectPort 563
+```
+
+### Mixed Allow/Deny with Exception
+
+Allow the entire `192.168.1.0/24` subnet but block a specific host:
+
+```ini tinyproxy.conf
+Deny  192.168.1.50
+Allow 192.168.1.0/24
+```
+
+Because rule evaluation stops at the first match, `192.168.1.50` matches `Deny` before reaching the broader `Allow`, and is rejected. All other hosts in the subnet match the `Allow` and are permitted.
+
+### Disable CONNECT Entirely
+
+For a plain-HTTP-only proxy (e.g., filtering appliance where HTTPS tunneling is explicitly unwanted):
+
+```ini tinyproxy.conf
+Allow 192.168.0.0/16
+
+# Prevent HTTPS tunneling through the proxy
+ConnectPort 0
+```
+
+### Allow Specific Domain with Localhost
+
+A development setup that allows the local machine and any host on a specific internal domain:
+
+```ini tinyproxy.conf
+Allow 127.0.0.1
+Allow ::1
+Allow .corp.internal
+```

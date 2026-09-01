@@ -1,0 +1,141 @@
+---
+title: "Upstream Proxy Chaining with HTTP and SOCKS"
+sidebarTitle: "Upstream Proxies"
+description: "Route Tinyproxy traffic through HTTP, SOCKS4, or SOCKS5 upstream proxies. Configure per-domain routing rules with optional authentication."
+---
+
+Tinyproxy can act as the first hop in a proxy chain by forwarding outgoing connections through an upstream proxy. This is useful in corporate environments where all internet traffic must pass through a gateway, in multi-tier proxy architectures, or when you want to route specific destinations through a SOCKS5 proxy such as Tor. Upstream rules are per-domain, so you can send internal traffic directly while funneling internet-bound requests through the upstream.
+
+<Note>
+  Upstream proxy support is a compile-time option. Your Tinyproxy binary must have been built with `--enable-upstream`. If `upstream` directives appear in your configuration file but upstream support was not compiled in, Tinyproxy will print an error and refuse to start.
+</Note>
+
+## Upstream Directive Syntax
+
+All upstream configuration is done through the `upstream` directive. Each `upstream` line defines one routing rule.
+
+**General upstream for all traffic (no site spec):**
+```ini
+upstream type host:port
+```
+
+**General upstream with authentication:**
+```ini
+upstream type user:pass@host:port
+```
+
+**Per-domain upstream with a site specification:**
+```ini
+upstream type host:port "site_spec"
+```
+
+**Bypass upstream for a specific site (direct connection):**
+```ini
+upstream none "site_spec"
+```
+
+The `type` field controls the protocol used to talk to the upstream proxy:
+
+| Type | Description |
+|------|-------------|
+| `http` | HTTP CONNECT proxy |
+| `socks4` | SOCKS4 proxy |
+| `socks5` | SOCKS5 proxy (supports authentication) |
+| `none` | No upstream; connect directly |
+
+The `site_spec` must always be enclosed in **double quotes**.
+
+## Site Specification Patterns
+
+The `site_spec` argument in a per-domain `upstream` rule determines which destinations the rule applies to. Five forms are supported:
+
+| Pattern | Matches |
+|---------|---------|
+| `name` | Exactly the host `name` |
+| `.name` | Any host within the domain `name` |
+| `.` | Any host with no domain component (unqualified hostnames) |
+| `IP/bits` | A network range in CIDR notation, e.g., `10.0.0.0/8` |
+| `IP/mask` | A network range with explicit mask, e.g., `192.168.0.0/255.255.254.0` |
+
+These patterns can be used with any upstream type, including `none` to direct-connect specific destinations.
+
+## Rule Evaluation
+
+Upstream rules are evaluated in the order they appear in the configuration file. **The last matching rule wins.** This is the opposite of the `Allow`/`Deny` ACL behavior, which uses first-match semantics.
+
+Rules without a `site_spec` match all traffic and act as a default — only one such default rule is meaningful, and it should always be placed last. Rules with a `site_spec` must be placed before the default rule to be reachable.
+
+<Tip>
+  Use raw IP addresses for the upstream proxy host rather than hostnames. Every connection through an upstream proxy that has a hostname in the `upstream` directive incurs a DNS lookup. Using an IP address eliminates that overhead entirely.
+</Tip>
+
+<Note>
+  IPv6 upstream addresses must be enclosed in square brackets to disambiguate the address from the port number: `upstream socks5 [::1]:9050`.
+</Note>
+
+## Examples
+
+### Realistic Multi-Upstream Configuration
+
+This configuration mirrors the example from the man page — internal domains and unqualified hosts connect directly, while all other traffic goes through a corporate HTTP proxy. A separate SOCKS5 rule routes `.onion` domains through Tor:
+
+```ini tinyproxy.conf
+# Connections to test domains go through a dedicated test proxy
+upstream http testproxy:8008 ".test.domain.invalid"
+upstream http testproxy:8008 ".our_testbed.example.com"
+upstream http testproxy:8008 "192.168.128.0/255.255.254.0"
+
+# Authenticated upstream proxy for a specific customer testbed
+upstream http user:pass@testproxy:8008 ".test.domain.invalid"
+
+# No upstream proxy for internal websites and unqualified hosts
+upstream none ".internal.example.com"
+upstream none "www.example.com"
+upstream none "10.0.0.0/8"
+upstream none "192.168.0.0/255.255.254.0"
+upstream none "."
+
+# Connections to customer DMZ firewalls
+upstream http cust1_firewall:8008 "testbed_for_cust1"
+upstream http cust2_firewall:8008 "testbed_for_cust2"
+
+# Default: all remaining traffic goes through the internet firewall
+upstream http firewall.internal.example.com:80
+```
+
+Because the last matching rule wins, the default `upstream http firewall...` line at the end is overridden for any host matched by an earlier, more specific rule.
+
+### Routing Through Tor (SOCKS5)
+
+Route all traffic through a local Tor SOCKS5 listener:
+
+```ini tinyproxy.conf
+upstream socks5 127.0.0.1:9050
+```
+
+Or, to use Tor only for `.onion` addresses and route clearnet traffic normally:
+
+```ini tinyproxy.conf
+upstream socks5 127.0.0.1:9050 ".onion"
+# No default upstream — clearnet traffic connects directly
+```
+
+### SOCKS4 Upstream
+
+```ini tinyproxy.conf
+upstream socks4 127.0.0.1:9050
+```
+
+## Null-Routing with Upstream
+
+The `upstream` directive can be used to **null-route** specific destinations by pointing them at a non-existent address. This silently drops all connections to matching hosts, which is useful for blocking ad servers or telemetry endpoints without the overhead of the filter subsystem:
+
+```ini tinyproxy.conf
+# Null-route all ad servers — connections fail immediately
+upstream http 0.0.0.0:0 ".adserver.com"
+
+# Continue routing everything else normally
+upstream http 10.0.0.1:3128
+```
+
+The `0.0.0.0:0` address causes the outgoing connection to fail instantly, resulting in a connection error for the client. This is distinct from a 403 block response — it behaves like the server is simply unreachable.

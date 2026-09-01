@@ -1,0 +1,147 @@
+---
+title: "Install Tinyproxy from Source or Package Manager"
+sidebarTitle: "Installation"
+description: "Build Tinyproxy from source using GNU autotools, or install it via common Linux package managers. Includes all configure flags."
+---
+
+Tinyproxy 1.11.3 ships as a standard GNU autotools project, which means you can build it on any POSIX-compliant system with a C compiler and a handful of common build tools. For mainstream Linux distributions, pre-built packages are available through the native package manager and are the fastest way to get started. Either path results in the same `tinyproxy` binary and the same configuration file format.
+
+## System Requirements
+
+- **Operating system:** Any POSIX-compliant OS (Linux, macOS, BSDs, etc.)
+- **C compiler:** GCC or Clang (C89/ANSI C compliant)
+- **Build tools (source only):** GNU autotools (`autoconf`, `automake`, `libtool`), `make`
+- **Optional:** `pod2man` for regenerating man pages from source; `gperf` for faster configuration-file parsing
+
+No external runtime library dependencies beyond a standard C library and POSIX socket interfaces are required.
+
+## Install from Package Manager
+
+<CodeGroup>
+
+```bash Debian / Ubuntu
+sudo apt update
+sudo apt install tinyproxy
+```
+
+```bash RHEL / Fedora
+# Fedora
+sudo dnf install tinyproxy
+
+# RHEL / CentOS (EPEL required)
+sudo yum install epel-release
+sudo yum install tinyproxy
+```
+
+```bash Alpine Linux
+sudo apk add tinyproxy
+```
+
+```bash Arch Linux
+sudo pacman -S tinyproxy
+```
+
+</CodeGroup>
+
+<Tip>
+  Package manager versions may lag behind the latest upstream release. To get version 1.11.3 specifically, build from source using the steps below.
+</Tip>
+
+## Build from Source
+
+<Steps>
+  <Step title="Clone the repository">
+    Fetch the Tinyproxy source from GitHub:
+
+    ```bash
+    git clone https://github.com/tinyproxy/tinyproxy.git
+    cd tinyproxy
+    ```
+
+    Alternatively, download and extract a release tarball from [https://github.com/tinyproxy/tinyproxy/releases](https://github.com/tinyproxy/tinyproxy/releases). Release tarballs include a pre-generated `configure` script, so you can skip the next step.
+  </Step>
+
+  <Step title="Generate the configure script (git checkouts only)">
+    If you cloned from git, the `configure` script does not yet exist. Generate it with:
+
+    ```bash
+    ./autogen.sh
+    ```
+
+    This requires `autoconf`, `automake`, and `libtool` to be installed. The script produces `configure` and all associated build files. If you are building from a release tarball, skip this step — `configure` is already present.
+  </Step>
+
+  <Step title="Run configure">
+    Run `./configure` to detect your system environment and select features. With no extra flags, all optional features that are enabled by default (filter, upstream, reverse, transparent, xtinyproxy) are compiled in:
+
+    ```bash
+    ./configure
+    ```
+
+    Pass any combination of the flags documented in the [Configure Options](#configure-options) section below to customise the build. For example, to enable debug output and set a custom stat host:
+
+    ```bash
+    ./configure --enable-debug --with-stathost=proxy.internal
+    ```
+  </Step>
+
+  <Step title="Compile">
+    Build the binary:
+
+    ```bash
+    make
+    ```
+  </Step>
+
+  <Step title="Install">
+    Install the binary, default configuration file, and man pages to the configured prefix (default: `/usr/local`):
+
+    ```bash
+    sudo make install
+    ```
+
+    The installed files land in:
+    - **Binary:** `$prefix/sbin/tinyproxy`
+    - **Config:** `$sysconfdir/tinyproxy/tinyproxy.conf`
+    - **Logs:** `$localstatedir/log/tinyproxy/tinyproxy.log`
+    - **PID file:** `$runstatedir/tinyproxy/tinyproxy.pid`
+  </Step>
+</Steps>
+
+## Configure Options
+
+The following flags can be passed to `./configure` to control which features are compiled into the binary.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--enable-debug` | `no` | Enable full debugging support, including extra diagnostic code and methods. Disables the `-DNDEBUG` optimisation flag. |
+| `--enable-xtinyproxy` | `yes` | Compile in support for the `X-Tinyproxy` header, which sends the client's IP address to the destination web server. Can also be toggled at runtime via the `XTinyproxy` config directive. |
+| `--enable-filter` | `yes` | Include domain and URL filtering support. Enables the `Filter`, `FilterURLs`, `FilterType`, `FilterCaseSensitive`, and `FilterDefaultDeny` configuration directives. |
+| `--enable-upstream` | `yes` | Include support for chaining connections through an upstream HTTP, SOCKS4, or SOCKS5 proxy server. Enables the `Upstream` configuration directive. |
+| `--enable-transparent` | `yes` | Compile in transparent proxy support, allowing Tinyproxy to intercept traffic redirected by firewall rules without requiring explicit client configuration. |
+| `--enable-reverse` | `yes` | Include reverse proxy support. Enables the `ReversePath`, `ReverseOnly`, `ReverseMagic`, and `ReverseBaseURL` configuration directives. |
+| `--with-stathost=HOST` | `tinyproxy.stats` | Set the default hostname that Tinyproxy treats as the statistics host. Requests to this host are answered with the internal stats page instead of being forwarded. Can also be overridden at runtime with the `StatHost` directive. |
+
+<Tip>
+  Features that are enabled by default (filter, upstream, transparent, reverse, xtinyproxy) can be explicitly disabled with the corresponding `--disable-<feature>` flag — for example, `--disable-filter` — if you want to produce a minimal binary for an embedded target.
+</Tip>
+
+## Verifying the Installation
+
+After installation, confirm the binary is on your `PATH` and check the version:
+
+```bash
+tinyproxy -v
+```
+
+Expected output:
+
+```
+tinyproxy 1.11.3
+```
+
+To display a summary of all accepted command-line options:
+
+```bash
+tinyproxy -h
+```

@@ -1,0 +1,105 @@
+---
+title: "Enable Anonymous Proxying to Strip Request Headers"
+sidebarTitle: "Anonymous Proxy"
+description: "Configure Tinyproxy to selectively forward only specified HTTP request headers, stripping all others to protect client privacy."
+---
+
+By default, Tinyproxy forwards all HTTP request headers from the client to the upstream server. This means identifying information — such as the browser's `User-Agent` string, the referring page in `Referer`, and any custom headers added by the operating system or application — reaches the destination server unchanged. Enabling anonymous proxying reverses this behaviour: you declare an explicit allowlist of headers, and Tinyproxy discards everything else before passing the request upstream. This gives you fine-grained control over what information about your clients leaks through the proxy.
+
+## How Anonymous Proxying Works
+
+The feature is implemented through a hash-map allowlist (`anonymous_map` in the source). When Tinyproxy starts up, each `Anonymous` directive in the config file inserts the named header into that map. At request time, Tinyproxy iterates over the incoming headers and calls `anonymous_search()` for each one. Any header whose name is not found in the map is silently dropped before the request is forwarded.
+
+The key property: **anonymous mode is activated purely by the presence of at least one `Anonymous` directive**. The function `is_anonymous_enabled()` returns true when the map is non-null — that is, when at least one entry has been inserted. With zero `Anonymous` directives the map is never created, the check returns false, and all headers are forwarded without filtering.
+
+<Note>
+  If no `Anonymous` directives appear in `tinyproxy.conf`, anonymous proxying
+  is completely disabled and every header the client sends is forwarded to the
+  upstream server unchanged.
+</Note>
+
+## The Anonymous Directive
+
+Each `Anonymous` line adds one header name to the allowlist. Header names must be enclosed in double quotes. Multiple directives accumulate into the same allowlist — they do not override each other.
+
+```ini
+Anonymous "Host"
+Anonymous "Authorization"
+Anonymous "Cookie"
+```
+
+Any header name that appears in an actual HTTP request is eligible. The comparison is performed against the header names exactly as they arrive (after Tinyproxy's internal normalisation to lower-case for lookup purposes), so use the canonical capitalisation shown in the RFC — `User-Agent`, `Referer`, `Accept-Language`, and so on.
+
+## Commonly Allowed Headers
+
+Choosing which headers to allow requires balancing privacy against site compatibility:
+
+**`Host`** — Required by HTTP/1.1. Every request to a named virtual host (which is nearly every website today) depends on the `Host` header to tell the server which site is being requested. Omitting it will cause the vast majority of requests to fail or return unexpected content. Always include `Host` in your allowlist.
+
+**`Content-Type` and `Content-Length`** — Required for any request that carries a body, such as `POST` and `PUT`. Without them, form submissions and API calls will be rejected by the upstream server.
+
+**`Authorization`** — Needed for sites that use HTTP Basic or Digest authentication at the server level (distinct from proxy-level BasicAuth). If you need to reach password-protected resources, include this header.
+
+**`Cookie`** — Sessions, shopping carts, login state, and personalisation all depend on cookies. Many modern sites will not function at all without this header. Include it if you need interactive site access, accept that it carries per-user tracking data if you include it.
+
+**`Accept`, `Accept-Encoding`, `Accept-Language`** — Content negotiation headers. Stripping them means the server will send a default content variant, which may be correct for your use case or may cause issues depending on the site.
+
+## Headers Stripped
+
+When anonymous mode is active, any header not explicitly listed is dropped. Common identifying headers that will be stripped if not listed include:
+
+| Header | What it reveals |
+|---|---|
+| `User-Agent` | Browser name, version, OS, and device type |
+| `Referer` | The URL of the page that initiated the request |
+| `X-Forwarded-For` | Client's original IP address |
+| `From` | Email address configured in some clients |
+| `Accept-Language` | Preferred language (narrows geography) |
+| `DNT` | "Do Not Track" preference |
+
+Any proprietary or application-specific headers your client software adds are also stripped unless you explicitly allow them.
+
+<Warning>
+  Many websites depend on `Cookie` headers for session management. If you
+  enable anonymous proxying without including `Anonymous "Cookie"`, users will
+  be unable to stay logged in, and sites that require a session cookie before
+  serving any content will appear broken. Add `Cookie` to your allowlist unless
+  your goal is specifically to block cookie transmission.
+</Warning>
+
+## Example Configuration
+
+The following configuration enables anonymous proxying with a minimal but functional header set suitable for general browsing where session continuity is required:
+
+```ini tinyproxy.conf
+User nobody
+Group nobody
+
+Port 8888
+Allow 127.0.0.1
+Allow ::1
+
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Notice
+
+# Anonymous proxying — only these headers are forwarded upstream.
+# All other headers (User-Agent, Referer, X-Forwarded-For, etc.) are stripped.
+Anonymous "Host"
+Anonymous "Content-Type"
+Anonymous "Content-Length"
+Anonymous "Cookie"
+Anonymous "Authorization"
+Anonymous "Accept"
+Anonymous "Accept-Encoding"
+```
+
+For a stricter configuration that maximises header suppression at the cost of compatibility with some sites, reduce the list to the bare minimum:
+
+```ini tinyproxy.conf
+# Strict — minimum headers only. Many interactive sites will break.
+Anonymous "Host"
+Anonymous "Content-Type"
+Anonymous "Content-Length"
+```
+
+To verify the effect, make a request through Tinyproxy and inspect what the destination server received. Tools such as `http://httpbin.org/headers` (proxied through Tinyproxy) will echo back exactly which headers arrived at the server.

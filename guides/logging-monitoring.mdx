@@ -1,0 +1,133 @@
+---
+title: "Configure Logging and Monitor Tinyproxy"
+sidebarTitle: "Logging & Monitoring"
+description: "Set up file-based or syslog logging in Tinyproxy, tune log verbosity, and use the built-in statistics page to monitor proxy activity."
+---
+
+Tinyproxy offers flexible logging with three output destinations, six verbosity levels, and a built-in HTTP statistics page that gives you a real-time view of proxy activity without any external tooling. Understanding and tuning these options lets you balance operational visibility against log volume — a critical trade-off on busy proxies or resource-constrained systems.
+
+## Log Output Options
+
+Tinyproxy supports three mutually exclusive log destinations, selected by which directives appear (or do not appear) in `tinyproxy.conf`.
+
+**File logging** writes timestamped, level-prefixed log entries to a named file. This is the most common choice for production deployments:
+
+```ini
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+```
+
+Each log line written to a file includes the level name, a timestamp with millisecond precision, the process ID, and the message — for example:
+
+```
+NOTICE    Jan 15 09:23:11.042 [12345]: Accepted connection from 192.168.1.10
+```
+
+**Syslog** integration hands every log message to the system's syslog daemon using `openlog("tinyproxy", LOG_PID, LOG_USER)`. This allows log messages to be routed, filtered, and forwarded by any syslog implementation (rsyslog, syslog-ng, journald, etc.):
+
+```ini
+Syslog On
+```
+
+**Standard output** is used automatically when neither `LogFile` nor `Syslog` is configured. Combined with the `-d` (foreground) flag, this is the easiest way to watch log output during development and testing:
+
+```bash
+tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf
+```
+
+<Note>
+  `LogFile` and `Syslog` are mutually exclusive. If both are present in the
+  configuration file, Tinyproxy will report an error. Choose one or the other,
+  or omit both to use stdout.
+</Note>
+
+## Log Levels
+
+The `LogLevel` directive sets the minimum severity of messages that are written. Messages at or above the configured level are output; messages below it are suppressed. The six available levels, from least to most verbose, are:
+
+| Level | Description |
+|---|---|
+| `Critical` | Severe errors that typically cause Tinyproxy to exit, such as failure to bind to the configured port. Least verbose. |
+| `Error` | Errors that affect a specific connection or operation but do not stop the daemon — for example, failing to write to the log file or an unresolvable upstream host. |
+| `Warning` | Conditions that are not errors but may indicate misconfiguration or unexpected behaviour, such as an illegal `BasicAuth` rule with a missing password. |
+| `Notice` | Normal operational events — successful startup, binding to the listen address, and accepted connections. A good default for production. |
+| `Connect` | Logs all proxy connections (the requests being forwarded) without the additional noise produced by `Info`. Useful when you want a request log but not internal detail. |
+| `Info` | All of the above plus detailed internal state — thread activity, header processing, upstream connection attempts. Most verbose. |
+
+```ini
+LogLevel Notice
+```
+
+For example, setting `LogLevel Warning` outputs `Warning`, `Error`, and `Critical` messages, but suppresses `Notice`, `Connect`, and `Info`. Setting `LogLevel Connect` outputs connection records and everything more severe, but suppresses `Info` messages.
+
+The `Connect` level has a special behaviour: when Tinyproxy is configured to use syslog, `LOG_CONN` messages are remapped to `LOG_INFO` before being passed to `syslog()`, since syslog has no equivalent priority.
+
+<Tip>
+  `LogLevel Connect` is an excellent choice for production deployments. It
+  records every proxied request — the information you most often need for
+  auditing, debugging, and traffic analysis — without the high volume of
+  internal `Info` messages that can quickly fill a log file on a busy proxy.
+</Tip>
+
+## Statistics Page (StatHost)
+
+Tinyproxy has a built-in statistics page that it serves in response to an HTTP request for a special hostname called the **stathost**. The response is an HTML page showing connection counts and other runtime metrics. No external monitoring agent is required.
+
+The default stathost hostname is `tinyproxy.stats` (set at compile time as `TINYPROXY_STATHOST`). You can override it with the `StatHost` directive:
+
+```ini
+StatHost "tinyproxy.stats"
+```
+
+To view the stats page, make an HTTP request through the proxy to the stathost:
+
+```bash
+curl -x http://127.0.0.1:8888 http://tinyproxy.stats/
+```
+
+The response is an HTML page. By default Tinyproxy renders a hard-coded internal template, but you can supply your own HTML template file with the `StatFile` directive:
+
+```ini
+StatFile "/usr/share/tinyproxy/stats.html"
+```
+
+The stats template supports the same template variable syntax as error page templates — variable names enclosed in braces are expanded before the page is delivered. For example, `{version}` is replaced with the running Tinyproxy version and `{date}` with the current date and time in HTTP format.
+
+<Note>
+  The full list of template variables available in the stats page and error
+  templates — including `{request}`, `{cause}`, `{clientip}`, `{clienthost}`,
+  `{version}`, `{package}`, `{date}`, and `{detail}` — is documented in the
+  Template Variables reference in the `tinyproxy(8)` man page.
+</Note>
+
+## PidFile
+
+The `PidFile` directive instructs Tinyproxy to write its main process ID to a file after startup:
+
+```ini
+PidFile "/run/tinyproxy/tinyproxy.pid"
+```
+
+The PID file is the standard mechanism for sending signals to a running daemon — see the [Signals & Runtime](/guides/signals-runtime) guide for details. It is also used by init systems and service managers to track and stop the process. Ensure the directory exists and is writable by the user Tinyproxy runs as:
+
+```bash
+install -d -o nobody -g nobody /run/tinyproxy
+```
+
+## Log Rotation
+
+On long-running systems the log file will grow indefinitely. Use `logrotate` to manage log file size. A minimal logrotate configuration for Tinyproxy:
+
+```ini /etc/logrotate.d/tinyproxy
+/var/log/tinyproxy/tinyproxy.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    postrotate
+        kill -USR1 $(cat /run/tinyproxy/tinyproxy.pid) 2>/dev/null || true
+    endscript
+}
+```
+
+The `postrotate` script sends `SIGUSR1` to Tinyproxy after the log file is rotated. `SIGUSR1` triggers a configuration and filter-list reload, which causes Tinyproxy to close and reopen its log file handle — ensuring subsequent log entries go to the newly created file rather than continuing to write to the rotated (renamed) file.

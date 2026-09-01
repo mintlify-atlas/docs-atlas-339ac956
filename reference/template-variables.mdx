@@ -1,0 +1,127 @@
+---
+title: "HTML Template Variables for Error and Stats Pages"
+sidebarTitle: "Template Variables"
+description: "Reference for Tinyproxy template variables available in ErrorFile, DefaultErrorFile, and StatFile HTML templates."
+---
+
+Tinyproxy can deliver HTML pages directly to the client — either in response to a proxy error or in response to a request for the statistics host. Rather than hard-coding these pages, Tinyproxy supports configurable HTML template files. Before delivering a template, Tinyproxy scans the file for known variable names enclosed in curly braces and substitutes each one with its runtime value. This page documents every template variable and explains how to use them when building custom error or statistics pages.
+
+## When Templates Are Used
+
+There are two occasions when Tinyproxy generates and delivers an HTML page from a template file rather than forwarding a request:
+
+1. **When an HTTP error occurs.** Tinyproxy looks up the error code in the `ErrorFile` map. If a matching template is configured, it is delivered. If no specific mapping exists, the `DefaultErrorFile` template is used as a fallback.
+
+2. **When a request is made for the StatHost.** If the hostname in the HTTP request matches the configured `StatHost` (default: `tinyproxy.stats`), Tinyproxy intercepts the request and responds with the `StatFile` template, which contains live connection statistics. If no `StatFile` is configured, a minimal hard-coded page is returned.
+
+## Variable Syntax
+
+Template variables are written as the variable name enclosed in curly braces, with no spaces:
+
+```
+{variable_name}
+```
+
+For example, `{request}` is replaced with the full HTTP request line, and `{version}` is replaced with the Tinyproxy version string. Any variable name that Tinyproxy does not recognize is left unchanged in the output.
+
+## Standard Variables
+
+The following variables are available in **every** template file — both error templates and the statistics template.
+
+<ResponseField name="{request}" type="string">
+  The full HTTP request line that the client sent to Tinyproxy, including the method, URI, and HTTP version — for example, `GET http://example.com/ HTTP/1.1`.
+</ResponseField>
+
+<ResponseField name="{cause}" type="string">
+  An abbreviated description of the error condition, such as `Bad Request` or `Connection Refused`. This is suitable for use in a page heading.
+</ResponseField>
+
+<ResponseField name="{clientip}" type="string">
+  The IP address of the client that made the request to Tinyproxy, for example `192.168.1.42` or `::1`.
+</ResponseField>
+
+<ResponseField name="{clienthost}" type="string">
+  The resolved hostname of the client making the request. If reverse DNS is unavailable, this may fall back to the IP address.
+</ResponseField>
+
+<ResponseField name="{version}" type="string">
+  The version string of the running Tinyproxy instance, for example `1.11.3`.
+</ResponseField>
+
+<ResponseField name="{package}" type="string">
+  The package name. Always resolves to `tinyproxy`.
+</ResponseField>
+
+<ResponseField name="{date}" type="string">
+  The current date and time at the moment the page is generated, formatted according to the HTTP date specification (RFC 7231) — for example, `Mon, 03 Jun 2024 14:22:00 GMT`.
+</ResponseField>
+
+## Error-Specific Variables
+
+The following variable is available in most error template files. It is not meaningful in the statistics template.
+
+<ResponseField name="{detail}" type="string">
+  A detailed, plain English explanation of the error condition and its possible causes. While `{cause}` provides a short label, `{detail}` provides a full paragraph suitable for display in the body of an error page. For example, a connection timeout error might include a note explaining that the remote server may be unreachable or overloaded.
+</ResponseField>
+
+## Example Template
+
+The following is a minimal but complete HTML error template that demonstrates usage of all standard and error-specific variables:
+
+```html
+<html>
+<head><title>Proxy Error</title></head>
+<body>
+  <h1>Error: {cause}</h1>
+  <p>Request: {request}</p>
+  <p>{detail}</p>
+  <p>Client: {clientip} &mdash; Tinyproxy {version}</p>
+  <p><small>Generated on {date}</small></p>
+</body>
+</html>
+```
+
+When Tinyproxy delivers this template in response to a `503 Service Unavailable` error, the output might look like:
+
+```html
+<html>
+<head><title>Proxy Error</title></head>
+<body>
+  <h1>Error: Service Unavailable</h1>
+  <p>Request: GET http://example.com/ HTTP/1.1</p>
+  <p>The server is temporarily unable to service your request. Please try again later.</p>
+  <p>Client: 127.0.0.1 &mdash; Tinyproxy 1.11.3</p>
+  <p><small>Generated on Mon, 03 Jun 2024 14:22:00 GMT</small></p>
+</body>
+</html>
+```
+
+## Configuring Templates
+
+Template files are wired in via three directives in `tinyproxy.conf`. All paths must be enclosed in double quotes.
+
+**Map a specific HTTP error code to a template:**
+
+```ini
+ErrorFile 400 "/usr/share/tinyproxy/400.html"
+ErrorFile 403 "/usr/share/tinyproxy/403.html"
+ErrorFile 408 "/usr/share/tinyproxy/408.html"
+ErrorFile 502 "/usr/share/tinyproxy/502.html"
+ErrorFile 503 "/usr/share/tinyproxy/503.html"
+```
+
+**Set a fallback template for unmapped error codes:**
+
+```ini
+DefaultErrorFile "/usr/share/tinyproxy/default.html"
+```
+
+**Set the statistics page template:**
+
+```ini
+StatFile "/usr/share/tinyproxy/stats.html"
+```
+
+<Tip>
+  The `StatFile` template supports all standard variables, making it straightforward to build a custom monitoring dashboard. Include `{version}`, `{date}`, and `{clientip}` to show which Tinyproxy instance is being queried, when the page was generated, and from which host. To view the statistics page, configure your browser or monitoring tool to route requests through Tinyproxy and then navigate to `http://tinyproxy.stats/` (or whichever hostname you set with the `StatHost` directive).
+</Tip>

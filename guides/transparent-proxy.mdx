@@ -1,0 +1,106 @@
+---
+title: "Set Up Tinyproxy as a Transparent Proxy"
+sidebarTitle: "Transparent Proxy"
+description: "Intercept HTTP traffic without any client configuration by redirecting packets to Tinyproxy using iptables or pf firewall rules."
+---
+
+Transparent proxying lets you route HTTP traffic through Tinyproxy without configuring anything on the client. Instead of pointing a browser or application at a proxy address, the firewall intercepts outbound connections and silently redirects them to Tinyproxy's listening port. From the client's perspective the connection looks direct; Tinyproxy handles the forwarding entirely behind the scenes. This is especially useful for embedded devices, managed networks, or any scenario where you cannot (or do not want to) configure individual clients.
+
+<Note>
+  Transparent proxy support must be compiled into Tinyproxy at build time with
+  the `--enable-transparent` configure flag. If your distribution package was
+  not built with this flag, you will need to compile Tinyproxy from source.
+</Note>
+
+## How Transparent Proxying Works
+
+In a standard proxy setup a client explicitly sends its request to the proxy's address and port. In transparent mode, the client sends an ordinary HTTP request to the destination server's IP on port 80. A firewall rule on the gateway intercepts those packets using a NAT redirect and delivers them to Tinyproxy instead.
+
+Tinyproxy detects that it is operating in transparent mode and recovers the original destination. If the `Host` request header is present, it is used directly. If it is absent (as can happen with very old HTTP clients), Tinyproxy falls back to calling `getsockname()` on the accepted socket to retrieve the original destination IP from the kernel's NAT table. It then constructs a fully-qualified `http://host:port/path` URL from those parts and forwards the request upstream as normal.
+
+One additional safety check prevents routing loops: if the recovered destination address matches one of Tinyproxy's own listen addresses, the connection is rejected with a `400 Bad Request` error and a log message such as `transparent: destination IP … is local on socket fd …`.
+
+## Tinyproxy Configuration
+
+For transparent proxying, the Tinyproxy configuration only needs a `Port` directive. No special transparent-mode directive is required inside the config file — the capability is activated entirely by the firewall redirect and the compile-time flag.
+
+```ini tinyproxy.conf
+User nobody
+Group nobody
+
+Port 8888
+
+# Accept connections from the local network segment
+Allow 192.168.1.0/24
+
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Notice
+
+PidFile "/run/tinyproxy/tinyproxy.pid"
+```
+
+Make sure the `Allow` directives cover the IP range of the hosts whose traffic you are redirecting. Because those clients are not explicitly configured to use a proxy, their source addresses are their real LAN addresses.
+
+## Firewall Rules
+
+The redirect rule must be placed in the PREROUTING chain (Linux) or the rdr anchor (BSD) so it fires before the routing decision. The example below redirects all inbound TCP traffic on port 80 arriving on the LAN interface to Tinyproxy running on port 8888.
+
+<Tabs>
+  <Tab title="Linux (iptables)">
+    ```bash
+    # Redirect all HTTP traffic arriving on eth0 to Tinyproxy
+    iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8888
+
+    # Allow Tinyproxy's own outbound traffic to bypass the redirect
+    # (replace 'tinyproxy' with the user Tinyproxy runs as)
+    iptables -t nat -A OUTPUT -p tcp --dport 80 -m owner --uid-owner tinyproxy -j RETURN
+    ```
+
+    To make the rule persistent across reboots, save it with `iptables-save` and restore it in your network init scripts or via a tool such as `iptables-persistent`.
+
+    ```bash
+    # Save current rules (Debian/Ubuntu)
+    iptables-save > /etc/iptables/rules.v4
+    ```
+  </Tab>
+  <Tab title="BSD (pf)">
+    Add the redirect rule to `/etc/pf.conf`. The `rdr pass` form both redirects and implicitly passes the traffic in a single rule:
+
+    ```pf
+    # Redirect HTTP traffic on em0 to Tinyproxy on localhost port 8888
+    rdr pass on em0 proto tcp from any to any port 80 -> 127.0.0.1 port 8888
+    ```
+
+    Reload pf after editing the config:
+
+    ```bash
+    pfctl -f /etc/pf.conf
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  For network-wide coverage, deploy Tinyproxy on your gateway or router — the
+  machine through which all LAN traffic naturally flows — and apply the firewall
+  redirect rule on its internal-facing interface. Every device on the network
+  will then be transparently proxied without any per-device configuration.
+</Tip>
+
+## Limitations
+
+Transparent proxying with Tinyproxy works for plain HTTP (port 80) traffic only.
+
+<Warning>
+  HTTPS traffic (port 443) **cannot** be transparently intercepted by Tinyproxy.
+  HTTPS connections are end-to-end encrypted with TLS; a transparent redirect
+  delivers an encrypted stream that Tinyproxy cannot read or rewrite without
+  performing SSL/TLS interception ("SSL bumping"). Tinyproxy does not implement
+  SSL bumping, so any attempt to redirect port 443 traffic will result in
+  connection errors for clients. Only redirect port 80 in your firewall rules.
+</Warning>
+
+Additional points to keep in mind:
+
+- **HTTP/1.0 clients without a `Host` header** work because Tinyproxy falls back to `getsockname()` to recover the original destination, but DNS-based virtual hosting will not resolve correctly in that case — the IP address is used directly.
+- **Loop prevention** is automatic: if the firewall accidentally redirects a request whose destination is Tinyproxy's own listen address, Tinyproxy detects the loop and returns a `400 Bad Request`.
+- **Access control** (`Allow`/`Deny`) still applies in transparent mode, so ensure the IP ranges of redirected clients are explicitly permitted.

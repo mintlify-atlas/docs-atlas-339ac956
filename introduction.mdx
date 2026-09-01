@@ -1,0 +1,70 @@
+---
+title: "Tinyproxy: Lightweight HTTP Proxy for POSIX Systems"
+sidebarTitle: "Introduction"
+description: "Learn what Tinyproxy is, who it's for, and the key features that make it ideal for small networks and embedded deployments."
+---
+
+Tinyproxy is a small, efficient HTTP/SSL proxy daemon released under the GNU General Public License. Built from the ground up to consume a minimum amount of system resources, it is an ideal solution for environments where a full-featured proxy is required but the overhead of a larger daemon — in memory, CPU, or attack surface — is unacceptable. Version 1.11.3 continues that tradition, supporting modern features such as upstream proxy chaining, transparent proxying, reverse proxying, and HTTP Basic Authentication without sacrificing the lean footprint that defines the project.
+
+## What is Tinyproxy?
+
+Tinyproxy is a POSIX HTTP/HTTPS proxy daemon that listens on a configurable TCP port and forwards client requests to origin servers. Its primary audience is network administrators who need to share an Internet connection across a small network while restricting traffic to HTTP(S) only, and embedded systems engineers who require a full proxy stack in a constrained environment.
+
+One of the defining architectural choices in Tinyproxy is its **connection buffering** model. When an origin server responds at high speed, Tinyproxy buffers the response and then relays it to the client at the highest rate the client can accept. This decouples the server-side and client-side transfer rates, which reduces the appearance of sluggishness on slow client connections and prevents long-lived idle connections from tying up server resources.
+
+Tinyproxy spawns one thread per connected client, bounded by the `MaxClients` configuration directive. This keeps the implementation simple and avoids the complexity of asynchronous I/O frameworks while still supporting concurrent users for small-to-medium deployments.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Access Control Lists" icon="shield-halved" href="/configuration/access-control">
+    Define `Allow` and `Deny` rules by IP address, CIDR range, hostname, or domain suffix. The default action flips to deny-all as soon as any ACL rule is present, so access is always intentional.
+  </Card>
+  <Card title="URL & Domain Filtering" icon="filter" href="/configuration/filtering">
+    Load a filter file of POSIX BRE, ERE, or fnmatch rules to block or allow specific domains and URLs. `FilterDefaultDeny` turns the list into a whitelist instead of a blacklist.
+  </Card>
+  <Card title="Upstream Proxy Chaining" icon="link" href="/configuration/upstream-proxies">
+    Route outgoing connections through an upstream HTTP, SOCKS4, or SOCKS5 proxy, with optional per-domain rules and credential support for authenticated upstream proxies.
+  </Card>
+  <Card title="Transparent Proxy" icon="eye-slash" href="/guides/transparent-proxy">
+    Operate as a transparent proxy when traffic is redirected by firewall rules (e.g., `iptables` REDIRECT). Clients require no browser configuration.
+  </Card>
+  <Card title="Reverse Proxy" icon="rotate" href="/configuration/reverse-proxy">
+    Map URL path prefixes to backend servers with `ReversePath`, making multiple upstream sites appear as a unified site served from a single address.
+  </Card>
+  <Card title="HTTP Basic Authentication" icon="lock" href="/guides/authentication">
+    Require clients to authenticate with a username and password before the proxy forwards their requests. Supports multiple `BasicAuth` entries and a configurable realm string.
+  </Card>
+  <Card title="Anonymous Proxying" icon="user-secret" href="/guides/anonymous-proxy">
+    Strip all but a specified set of HTTP headers from outgoing requests using `Anonymous` directives, preventing origin servers from seeing client-identifying headers.
+  </Card>
+  <Card title="Built-in Statistics Page" icon="chart-bar" href="/guides/logging-monitoring">
+    Request the configured `StatHost` (default: `tinyproxy.stats`) through the proxy to receive a live HTML page showing connection statistics — no separate monitoring daemon required.
+  </Card>
+  <Card title="Connection Buffering" icon="bolt" href="/reference/configuration-options">
+    Tinyproxy buffers high-speed server responses and delivers them to clients at the client's own maximum rate, reducing sluggishness on asymmetric connections.
+  </Card>
+  <Card title="Syslog & File Logging" icon="file-lines" href="/reference/configuration-options">
+    Write structured log output to a dedicated log file or hand it off to syslog. Six log levels — from `Critical` to `Info` — let you control verbosity precisely.
+  </Card>
+</CardGroup>
+
+## When to Use Tinyproxy
+
+**Embedded and resource-constrained systems.** Tinyproxy was designed from the ground up to run where a larger proxy such as Squid would be impractical. Its low memory footprint and minimal dependencies make it a natural fit for router firmware, single-board computers, and similar platforms.
+
+**Small office and home networks.** When a network shares a single Internet uplink and you want to enforce HTTP-only access, Tinyproxy provides ACLs, filtering, and logging without the operational complexity of an enterprise proxy.
+
+**Restricted or air-gapped environments.** In environments where outbound traffic must pass through a controlled choke point, Tinyproxy can be deployed on a bastion host to enforce allow-lists, strip headers, and log every connection.
+
+**Development and HTTP inspection.** Pointing a development environment's traffic at a local Tinyproxy instance gives you a lightweight way to log outbound HTTP requests, inject custom headers with `AddHeader`, or test upstream proxy behavior — without standing up a full proxy infrastructure.
+
+<Note>
+  Tinyproxy handles HTTP and HTTPS tunneling (via the `CONNECT` method) but does **not** perform SSL/TLS inspection. HTTPS traffic is tunneled opaquely; header-level features such as `AddHeader`, `Anonymous`, and `FilterURLs` do not apply to HTTPS connections.
+</Note>
+
+## License
+
+Tinyproxy is distributed under the **GNU General Public License, version 2 or later**. The full license text is included in the `COPYING` file in the source distribution and is available at [https://github.com/tinyproxy/tinyproxy/blob/master/COPYING](https://github.com/tinyproxy/tinyproxy/blob/master/COPYING).
+
+Copyright © 1998–2024 the Tinyproxy authors.

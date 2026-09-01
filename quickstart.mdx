@@ -1,47 +1,153 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Tinyproxy in Minutes"
+sidebarTitle: "Quickstart"
+description: "Configure and run Tinyproxy for the first time. Create a minimal tinyproxy.conf and verify your proxy is working with curl."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+Getting Tinyproxy running takes only a configuration file and a single command. This guide walks you through writing a minimal `tinyproxy.conf`, starting the daemon in the foreground for easy debugging, verifying that it forwards requests correctly, and then transitioning to a background daemon process. From first run to production-ready takes less than five minutes.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Warning>
+  If you specify **no** `Allow` or `Deny` rules in `tinyproxy.conf`, Tinyproxy allows connections from **all** clients. Always add explicit `Allow` rules that restrict access to trusted hosts or networks before exposing the proxy on any interface reachable by untrusted clients.
+</Warning>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Create a minimal tinyproxy.conf">
+    Create a configuration file with the minimum required directives. This configuration listens on port 8888, drops privileges to the `nobody` user and group after startup, restricts access to localhost only, and logs at `Info` level.
+
+    ```ini tinyproxy.conf
+    # Tinyproxy minimal configuration
+
+    # Drop privileges after binding to the port
+    User nobody
+    Group nobody
+
+    # Port to listen on (no root required for ports >= 1024)
+    Port 8888
+
+    # Only accept connections from localhost
+    Allow 127.0.0.1
+    Allow ::1
+
+    # Log verbosity: Critical | Error | Warning | Notice | Connect | Info
+    LogLevel Info
+
+    # Identify this proxy in the Via header
+    ViaProxyName "tinyproxy"
+
+    # Maximum simultaneous clients
+    MaxClients 100
+
+    # Close idle connections after 600 seconds
+    Timeout 600
+    ```
+
+    Save this file to a convenient path, for example `/etc/tinyproxy/tinyproxy.conf` (if installed system-wide) or `~/tinyproxy.conf` for a local test run.
+
+    <Note>
+      When neither `LogFile` nor `Syslog` is set, Tinyproxy writes log output to **stdout**, which is ideal for development and initial testing.
+    </Note>
+  </Step>
+
+  <Step title="Start Tinyproxy in the foreground">
+    Run Tinyproxy with the `-d` flag to keep it in the foreground (no daemonisation) and `-c` to point it at your config file:
 
     ```bash
-    npm install your-package
+    tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf
+    ```
+
+    You should see log lines similar to the following appear in your terminal, confirming Tinyproxy has initialised and is waiting for connections:
+
+    ```
+    CONNECT   Oct 01 12:00:00 [12345]: Initialised log subsystem
+    INFO      Oct 01 12:00:00 [12345]: Tinyproxy 1.11.3 starting
+    INFO      Oct 01 12:00:00 [12345]: Listening on port 8888
+    ```
+
+    Press `Ctrl-C` at any time to stop the process cleanly. The foreground mode is ideal for debugging configuration changes; once everything works as expected, move on to the daemon step below.
+
+    <Tip>
+      While Tinyproxy is running in the foreground, you can send `SIGUSR1` to force a reload of the configuration file and filter list without dropping active connections:
+
+      ```bash
+      kill -USR1 $(pgrep tinyproxy)
+      ```
+    </Tip>
+  </Step>
+
+  <Step title="Test the proxy with curl">
+    Open a second terminal and use `curl` with the `-x` flag to route a request through Tinyproxy:
+
+    ```bash
+    curl -x http://127.0.0.1:8888 http://example.com
+    ```
+
+    A successful response returns the HTML of `example.com`. In the Tinyproxy terminal you will see a `CONNECT` log entry confirming the request was handled:
+
+    ```
+    CONNECT   Oct 01 12:00:05 [12346]: Connect (file descriptor 6): 127.0.0.1
+    CONNECT   Oct 01 12:00:05 [12346]: Request (file descriptor 6): GET http://example.com/ HTTP/1.1
+    ```
+
+    To test HTTPS tunneling via the `CONNECT` method:
+
+    ```bash
+    curl -x http://127.0.0.1:8888 https://example.com
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Check the statistics page">
+    Tinyproxy serves a built-in HTML statistics page for any request made to the configured `StatHost`. The default stat host name is `tinyproxy.stats`. Route a request to it through the proxy:
 
     ```bash
-    your-cli init
+    curl -x http://127.0.0.1:8888 http://tinyproxy.stats
     ```
+
+    Tinyproxy intercepts the request internally and returns an HTML page showing counters such as the number of open connections, requests handled, and refused connections. No DNS lookup for `tinyproxy.stats` ever occurs.
+
+    To change the stat host to a different name, add `StatHost "proxy.internal.stats"` to your `tinyproxy.conf` and reload the configuration.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Run as a background daemon">
+    When you are satisfied with the configuration, start Tinyproxy as a background daemon by omitting the `-d` flag. Add a `PidFile` directive to `tinyproxy.conf` so you can signal the process later:
+
+    ```ini tinyproxy.conf
+    # Add this line to your tinyproxy.conf
+    PidFile "/run/tinyproxy/tinyproxy.pid"
+    ```
+
+    Then start the daemon:
 
     ```bash
-    your-cli start
+    tinyproxy -c /etc/tinyproxy/tinyproxy.conf
+    ```
+
+    Tinyproxy forks into the background and writes its PID to the file specified by `PidFile`. To stop the daemon gracefully, send it `SIGTERM`:
+
+    ```bash
+    kill $(cat /run/tinyproxy/tinyproxy.pid)
+    ```
+
+    To trigger garbage collection on stale connection state, send `SIGHUP`:
+
+    ```bash
+    kill -HUP $(cat /run/tinyproxy/tinyproxy.pid)
     ```
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Next Steps
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Configuration Overview" icon="sliders" href="/configuration/overview">
+    Explore the full set of configuration directives available in `tinyproxy.conf`, including logging, timeouts, headers, and error pages.
+  </Card>
+  <Card title="Access Control" icon="shield-halved" href="/configuration/access-control">
+    Build precise `Allow` and `Deny` ACLs using IP addresses, CIDR ranges, hostnames, and domain suffixes to control which clients may use the proxy.
+  </Card>
+  <Card title="Authentication" icon="lock" href="/guides/authentication">
+    Require HTTP Basic Authentication credentials before the proxy forwards requests, using the `BasicAuth` and `BasicAuthRealm` directives.
+  </Card>
+  <Card title="Configuration Reference" icon="book" href="/reference/configuration-options">
+    A complete reference for every `tinyproxy.conf` directive, including type, default value, and example usage.
+  </Card>
+</CardGroup>

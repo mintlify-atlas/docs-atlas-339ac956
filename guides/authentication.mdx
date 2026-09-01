@@ -1,0 +1,122 @@
+---
+title: "Require HTTP Basic Authentication on Tinyproxy"
+sidebarTitle: "Authentication"
+description: "Protect your Tinyproxy instance with HTTP Basic Authentication. Configure credentials and customize the authentication realm."
+---
+
+By default, access to Tinyproxy is controlled solely by its `Allow`/`Deny` IP-address rules. For deployments that are reachable from untrusted networks — or where you want user-level accountability rather than just network-level access control — Tinyproxy supports HTTP Basic Authentication at the proxy level. When credentials are configured, every client must supply a valid username and password in the `Proxy-Authorization` header before Tinyproxy will forward any request. Clients that do not authenticate receive a `407 Proxy Authentication Required` response.
+
+## BasicAuth Directive
+
+The `BasicAuth` directive adds a username/password pair to the credential list. Its syntax is:
+
+```ini
+BasicAuth user password
+```
+
+Multiple `BasicAuth` lines are allowed and each one adds an independent valid credential. As soon as **any** `BasicAuth` entry is present in the configuration, authentication is required for all clients — there is no way to make authentication optional for some users and mandatory for others using this directive alone.
+
+Internally, Tinyproxy encodes each `user:password` pair with Base64 and stores the encoded string in a list. When a client sends a `Proxy-Authorization: Basic` header with a Base64 token, the token is looked up directly in that list. The `basicauth_check()` function iterates through every stored entry and returns success on the first match.
+
+```ini
+# Any number of BasicAuth entries can be specified.
+# All of them are valid simultaneously.
+BasicAuth alice secretpassword
+BasicAuth bob anotherpassword
+BasicAuth svc-account t0k3nV4lu3
+```
+
+## BasicAuthRealm Directive
+
+The realm string appears in the browser's authentication dialog and in the `Proxy-Authenticate` response header sent with the `407` status. It helps users understand which system is asking for credentials. If `BasicAuthRealm` is not set, Tinyproxy defaults to the package name `Tinyproxy`.
+
+```ini
+BasicAuthRealm "My Proxy"
+```
+
+The realm value must be enclosed in double quotes if it contains spaces. It is used verbatim in the `Proxy-Authenticate: Basic realm="…"` header.
+
+## Configuration Example
+
+```ini tinyproxy.conf
+User nobody
+Group nobody
+
+Port 8888
+
+# Network-level access control — only allow LAN clients
+Allow 192.168.1.0/24
+
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Notice
+
+PidFile "/run/tinyproxy/tinyproxy.pid"
+
+# Proxy-level authentication
+BasicAuth alice secretpassword
+BasicAuth bob anotherpassword
+BasicAuthRealm "My Proxy"
+```
+
+With this configuration, any client from `192.168.1.0/24` that does not supply valid credentials will receive a `407 Proxy Authentication Required` response with the header `Proxy-Authenticate: Basic realm="My Proxy"`.
+
+## Using an Authenticated Proxy
+
+Most HTTP clients support proxy authentication natively. With `curl`, you can supply credentials directly in the proxy URL:
+
+```bash
+# Credentials in the proxy URL (curl encodes them automatically)
+curl -x http://alice:secretpassword@127.0.0.1:8888 http://example.com
+```
+
+Alternatively, construct the `Proxy-Authorization` header manually. The value is `Basic` followed by the Base64 encoding of `username:password`. For `alice:secretpassword` that is `YWxpY2U6c2VjcmV0cGFzc3dvcmQ=`:
+
+```bash
+# Explicit Proxy-Authorization header
+curl -x http://127.0.0.1:8888 \
+     -H 'Proxy-Authorization: Basic YWxpY2U6c2VjcmV0cGFzc3dvcmQ=' \
+     http://example.com
+```
+
+You can generate the Base64 token on the command line:
+
+```bash
+echo -n 'alice:secretpassword' | base64
+# YWxpY2U6c2VjcmV0cGFzc3dvcmQ=
+```
+
+For browser-based clients, setting the proxy in system preferences or in the browser's network settings is sufficient — the browser will prompt for the username and password and handle the encoding automatically.
+
+## Combining with ACLs
+
+`BasicAuth` and the `Allow`/`Deny` access-control directives operate independently and are both evaluated for each connection. A client must satisfy **both** the network-level ACL rules **and** the authentication requirement to have its requests forwarded.
+
+The ACL check happens at connection time, before the HTTP request headers are read, so a client whose source IP is not in any `Allow` range is rejected immediately — it never reaches the authentication step. Conversely, a client with an allowed IP that sends no credentials (or wrong credentials) is rejected at the authentication step with a `407`.
+
+This layering is useful: you can restrict Tinyproxy to a known IP range using `Allow` to prevent connections from unknown hosts, and then use `BasicAuth` to enforce per-user accountability within that range.
+
+```ini
+# Restrict to LAN, then require per-user credentials
+Allow 10.0.0.0/8
+BasicAuth ops-user str0ngP@ss
+BasicAuth dev-user an0therP@ss
+BasicAuthRealm "Internal Proxy"
+```
+
+<Warning>
+  HTTP Basic Authentication encodes credentials in Base64, which is **not
+  encryption**. Anyone who can intercept the TCP connection between the client
+  and Tinyproxy can trivially decode the `Proxy-Authorization` header and
+  recover the plaintext username and password. If your Tinyproxy instance is
+  reachable over an untrusted network, place it behind a TLS-terminating reverse
+  proxy (such as nginx or HAProxy) so that the credential exchange happens over
+  an encrypted channel.
+</Warning>
+
+<Tip>
+  Enable the `XTinyproxy` directive (`XTinyproxy Yes`) to add an
+  `X-Tinyproxy` header containing the authenticated client's IP address to each
+  forwarded request. This is useful for upstream servers or logging systems that
+  need to attribute requests to specific client machines even though all traffic
+  appears to originate from the proxy's IP.
+</Tip>

@@ -1,0 +1,162 @@
+---
+title: "Tinyproxy Configuration File Overview"
+sidebarTitle: "Overview"
+description: "Understand the tinyproxy.conf format, file location, syntax rules, and the core directives that every deployment needs."
+---
+
+Tinyproxy is configured through a single plain-text file that controls every aspect of the daemon's behavior — from the port it listens on to the user it runs as, connection limits, and logging. Getting familiar with the file's structure and core directives before enabling optional features like filtering or upstream proxying will save you troubleshooting time and make your configuration easier to maintain.
+
+## File Location
+
+The default configuration file path is `/etc/tinyproxy/tinyproxy.conf`. When Tinyproxy starts, it reads this file unless you specify an alternative with the `-c` flag:
+
+```bash
+tinyproxy -c /path/to/custom/tinyproxy.conf
+```
+
+You can store your configuration file anywhere on the filesystem as long as the Tinyproxy process has read permission. Running multiple Tinyproxy instances on the same host with separate configs is fully supported using the `-c` flag for each instance.
+
+## File Syntax
+
+The configuration file contains **key-value pairs, one per line**. The rules are:
+
+- Lines beginning with `#` are comments and are ignored, as are blank lines.
+- **Keywords are case-insensitive.** `Port`, `port`, and `PORT` all parse identically.
+- **Values are case-sensitive.** A path like `/etc/tinyproxy/filter` must match the exact filesystem casing.
+- Some string values — including file paths, proxy names, and filter rules — must be **enclosed in double quotes** (`"`). The man page and directive descriptions below note where quoting is required.
+- There is no support for line continuation; each directive must fit on a single line.
+
+A minimal example:
+
+```ini tinyproxy.conf
+# This is a comment
+Port 8888
+User nobody
+Group nobody
+```
+
+## Core Directives
+
+These directives form the foundation of every Tinyproxy deployment. The `Port` directive is the only one that is strictly required — Tinyproxy will refuse to start if it is absent.
+
+<ParamField body="User" type="string">
+  The user account the Tinyproxy process runs as after the initial port-binding step, which requires `root`. Either the user name or a numeric UID may be specified. It is strongly recommended to run as an unprivileged user such as `nobody`.
+
+  ```ini
+  User nobody
+  ```
+</ParamField>
+
+<ParamField body="Group" type="string">
+  The group the Tinyproxy process runs as after the initial port-binding step. Either the group name or a numeric GID may be specified.
+
+  ```ini
+  Group nobody
+  ```
+</ParamField>
+
+<ParamField body="Port" type="integer" required>
+  The TCP port on which Tinyproxy listens for incoming proxy connections. Ports below 1024 require Tinyproxy to be started as `root`. The conventional default for Tinyproxy is `8888`.
+
+  ```ini
+  Port 8888
+  ```
+</ParamField>
+
+<ParamField body="Listen" type="string">
+  By default Tinyproxy listens on all available interfaces (the wildcard address `0.0.0.0`). Set `Listen` to restrict the daemon to a single IP address. This is useful on multi-homed machines where the proxy should only be reachable on an internal interface. The directive may be specified multiple times to listen on more than one address.
+
+  ```ini
+  Listen 192.168.0.1
+  ```
+</ParamField>
+
+<ParamField body="Bind" type="string">
+  Specifies which local address Tinyproxy binds its **outgoing** connections to. This is useful on multi-homed hosts where all outbound traffic must appear to originate from a specific interface. The directive may be specified multiple times; Tinyproxy will try each address in order.
+
+  ```ini
+  Bind 203.0.113.5
+  ```
+</ParamField>
+
+<ParamField body="BindSame" type="boolean">
+  When set to `yes`, Tinyproxy binds each outgoing connection to the same IP address as the incoming connection that triggered it. This is a convenient alternative to `Bind` in environments where the proxy has multiple external addresses.
+
+  ```ini
+  BindSame yes
+  ```
+</ParamField>
+
+<ParamField body="Timeout" type="integer">
+  The maximum number of seconds a connection may be idle before Tinyproxy closes it. The default compiled into the binary is 600 seconds (10 minutes). Setting this too low can cause problems with slow back-end servers; setting it too high wastes file descriptors.
+
+  ```ini
+  Timeout 600
+  ```
+</ParamField>
+
+<ParamField body="MaxClients" type="integer">
+  The absolute maximum number of simultaneous client connections Tinyproxy will accept. Tinyproxy spawns one thread per connected client, so this is also the upper bound on thread count. The built-in default is `100`.
+
+  ```ini
+  MaxClients 100
+  ```
+</ParamField>
+
+<ParamField body="PidFile" type="string">
+  The path to the file where Tinyproxy writes the PID of its main process. This file is used for sending signals to the daemon (for example, `SIGUSR1` for config reload). The value must be enclosed in double quotes. If this directive is omitted, no PID file is written.
+
+  ```ini
+  PidFile "/run/tinyproxy/tinyproxy.pid"
+  ```
+</ParamField>
+
+## Reloading Configuration
+
+Tinyproxy supports **live configuration reload** without dropping active connections. Sending `SIGUSR1` to the main process causes it to re-read the configuration file and reload the filter list:
+
+```bash
+# Using the PID file
+kill -USR1 $(cat /run/tinyproxy/tinyproxy.pid)
+
+# Or, if you know the PID directly
+kill -USR1 <pid>
+```
+
+This is particularly valuable in production environments where restarting the process would interrupt in-flight requests. All existing connections continue unaffected; only new connections use the updated configuration.
+
+## Minimal Working Configuration
+
+The following is a complete, functional Tinyproxy configuration suitable as a starting point. It listens on all interfaces, allows connections only from localhost, and runs as the `nobody` user:
+
+```ini tinyproxy.conf
+##
+## Minimal Tinyproxy configuration
+##
+
+User nobody
+Group nobody
+
+Port 8888
+
+Timeout 600
+MaxClients 100
+
+PidFile "/run/tinyproxy/tinyproxy.pid"
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Notice
+
+# Only allow connections from localhost
+Allow 127.0.0.1
+Allow ::1
+```
+
+<Tip>
+  When first testing a new configuration, run Tinyproxy in the foreground with the `-d` flag. This prints log output directly to your terminal so you can see errors and connection events immediately, without having to tail a log file:
+
+  ```bash
+  tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf
+  ```
+
+  Press `Ctrl+C` to stop. Once your configuration is working correctly, remove `-d` to let the daemon fork into the background normally.
+</Tip>

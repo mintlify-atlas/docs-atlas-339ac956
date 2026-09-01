@@ -1,0 +1,145 @@
+---
+title: "Domain and URL Filtering with Filter Rules"
+sidebarTitle: "Filtering"
+description: "Block or allow web traffic using domain or URL pattern rules. Supports POSIX BRE, ERE, and fnmatch syntax with configurable default policy."
+---
+
+Tinyproxy's filtering system lets you control which domains and URLs clients can reach through the proxy. Rules are stored in a separate filter file and matched against each request using your choice of POSIX basic regular expressions, POSIX extended regular expressions, or shell-style `fnmatch` glob patterns. You can operate in blacklist mode (deny matched destinations) or whitelist mode (deny everything except matched destinations), making filtering flexible enough for both ad-blocking and restricted access scenarios.
+
+<Note>
+  Filtering support is a compile-time option. Your Tinyproxy binary must have been built with `--enable-filter`. If filtering directives are present in your configuration file but filtering was not compiled in, Tinyproxy will print an error and refuse to start.
+</Note>
+
+## Filter Configuration Directives
+
+<ParamField body="Filter" type="string">
+  The path to the filter rules file. Each line in this file is a pattern to match against incoming requests. The path must be enclosed in double quotes.
+
+  ```ini
+  Filter "/etc/tinyproxy/filter"
+  ```
+</ParamField>
+
+<ParamField body="FilterType" type="string">
+  Controls the matching syntax used for rules in the filter file. Accepted values are `bre`, `ere`, and `fnmatch`. The default is `bre`.
+
+  - **`bre`** — POSIX Basic Regular Expressions. The traditional regex syntax where most metacharacters (like `+`, `?`, `|`, and `()`) must be backslash-escaped to be treated as operators.
+  - **`ere`** — POSIX Extended Regular Expressions. The modern regex syntax where `+`, `?`, `|`, and `()` work without backslash escaping (same syntax used by `grep -E` and `egrep`).
+  - **`fnmatch`** — Shell-style glob patterns, as specified by `fnmatch(3p)`. Metacharacters are `*` (any sequence of characters), `?` (any single character), and `[...]` (character classes). This is the fastest of the three methods and requires no knowledge of regular expressions.
+
+  ```ini
+  FilterType fnmatch
+  ```
+</ParamField>
+
+<ParamField body="FilterURLs" type="boolean">
+  When set to `Yes` or `On`, filter rules are matched against the full request URL (e.g., `http://www.example.com/path/page.html`) instead of just the domain name (`www.example.com`). Default is `No` (domain filtering).
+
+  ```ini
+  FilterURLs On
+  ```
+</ParamField>
+
+<ParamField body="FilterCaseSensitive" type="boolean">
+  When set to `Yes`, rule matching is case-sensitive. The default is case-insensitive matching. Enabling case-sensitive matching is approximately twice as fast because it avoids the overhead of case-folding comparisons. This setting only affects `bre` and `ere` filter types; `fnmatch` is always case-sensitive.
+
+  ```ini
+  FilterCaseSensitive Yes
+  ```
+</ParamField>
+
+<ParamField body="FilterDefaultDeny" type="boolean">
+  Controls the default filtering policy when no rule matches a request.
+
+  - **`No`** (default) — the filter list acts as a **blacklist**: all destinations are allowed except those matching a rule.
+  - **`Yes`** — the filter list acts as a **whitelist**: all destinations are denied except those matching a rule.
+
+  ```ini
+  FilterDefaultDeny Yes
+  ```
+</ParamField>
+
+## Filter File Format
+
+The filter file is a plain text file with one rule per line. Lines beginning with `#` are treated as comments and ignored. Empty lines are also ignored. Rules are POSIX BRE patterns by default; set `FilterType` to change the matching syntax.
+
+```text /etc/tinyproxy/filter
+# This is a comment — blank lines are also ignored
+
+# Block exact domain
+^cnn\.com$
+
+# Block all subdomains of cnn.com (but not cnn.com itself)
+.*\.cnn\.com$
+```
+
+When `FilterURLs` is disabled (the default), each rule is matched against the **hostname** portion of the request. When `FilterURLs` is enabled, the entire URL string is matched.
+
+## Filter Examples
+
+The following examples use POSIX BRE syntax (the default `FilterType`):
+
+```text /etc/tinyproxy/filter
+# Filter exactly cnn.com
+^cnn\.com$
+
+# Filter all subdomains of cnn.com, but not cnn.com itself
+.*\.cnn\.com$
+
+# Filter any domain that has cnn.com anywhere in it
+# (matches xcnn.comfy.org, for example — use with care)
+cnn\.com
+
+# Filter any domain that ends with cnn.com
+cnn\.com$
+
+# Filter any domain that starts with adserver
+^adserver
+```
+
+<Warning>
+  `FilterURLs` only works for **plain HTTP** requests. Because HTTPS traffic is tunneled through the `CONNECT` method, Tinyproxy cannot inspect the URL — it sees only the target hostname. With HTTPS now ubiquitous, URL-based filtering applies to a very small fraction of real-world traffic. Domain filtering (the default) works for both HTTP and HTTPS, because the hostname is visible from the `CONNECT` request.
+</Warning>
+
+## fnmatch Filtering
+
+When `FilterType fnmatch` is set, rules use glob-style patterns identical to those used by the shell for filename matching. Wildcards are more readable than regular expressions for most common filtering tasks:
+
+```text /etc/tinyproxy/filter
+# Block all subdomains of google.com
+*.google.com
+
+# Block any domain containing "adserver"
+*adserver*
+
+# Block a specific host
+tracking.example.com
+
+# Block all .xyz TLD domains
+*.xyz
+```
+
+`fnmatch` patterns are matched against the full hostname. There is no need to escape dots or anchor the pattern — `*.google.com` matches `mail.google.com` and `www.google.com` but not `google.com` itself (for that, add a separate `google.com` rule).
+
+<Tip>
+  If you are using filter lists downloaded from third-party sources (such as community ad-block lists), use `FilterType fnmatch`. These lists typically use glob syntax and do not assume POSIX regex semantics. `fnmatch` is also the fastest of the three matching methods, so large blocklists impose less overhead.
+</Tip>
+
+## Whitelist Mode Example
+
+To configure Tinyproxy as a restricted proxy that only allows access to specific approved domains, combine `FilterDefaultDeny Yes` with an allowlist in the filter file:
+
+```ini tinyproxy.conf
+Filter "/etc/tinyproxy/allowlist"
+FilterDefaultDeny Yes
+FilterType fnmatch
+```
+
+```text /etc/tinyproxy/allowlist
+# Only these domains are reachable through the proxy
+*.example.com
+*.internal.corp
+updates.ubuntu.com
+```
+
+Any request to a domain not covered by a rule in the allowlist will be blocked with an HTTP 403 response.

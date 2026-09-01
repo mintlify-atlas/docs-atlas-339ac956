@@ -1,0 +1,482 @@
+---
+title: "tinyproxy.conf: Complete Configuration Reference"
+sidebarTitle: "Config Options"
+description: "Every configuration directive for tinyproxy.conf — syntax, type, default values, and examples for all parameters."
+---
+
+This page is the comprehensive reference for every directive supported in `tinyproxy.conf`. The configuration file uses simple `key value` pairs, one per line. Lines beginning with `#` and blank lines are treated as comments and ignored. **Directive names are case-insensitive**; values are case-sensitive. Some string values must be enclosed in double quotes (`"`) as noted for each directive below. The file is typically located at `/etc/tinyproxy/tinyproxy.conf`, or you can specify an alternative path with the `-c` flag.
+
+## Process & Network
+
+<ParamField query="User" type="string">
+  The user that the Tinyproxy process drops to after the initial port-binding has been performed as `root`. Either the user name or the numeric UID may be specified.
+
+  ```ini
+  User nobody
+  ```
+</ParamField>
+
+<ParamField query="Group" type="string">
+  The group that the Tinyproxy process drops to after the initial port-binding has been performed as `root`. Either the group name or the numeric GID may be specified.
+
+  ```ini
+  Group nobody
+  ```
+</ParamField>
+
+<ParamField query="Port" type="integer" required>
+  The TCP port on which Tinyproxy listens for incoming proxy connections. Ports below 1024 require Tinyproxy to be started as `root`. There is no compiled-in default — this directive **must** be present in the configuration file; Tinyproxy will refuse to start without it.
+
+  ```ini
+  Port 8888
+  ```
+</ParamField>
+
+<ParamField query="Listen" type="IP address">
+  By default, Tinyproxy listens on all available interfaces (the wildcard address `0.0.0.0`). Set this directive to bind to a single specific IP address instead. Both IPv4 and IPv6 addresses are accepted.
+
+  ```ini
+  Listen 192.168.0.1
+  ```
+</ParamField>
+
+<ParamField query="Bind" type="IP address">
+  The local IP address that Tinyproxy binds to when making outgoing connections to upstream servers. This is useful on multi-homed machines where you want all proxied traffic to appear to originate from one particular interface. This directive may be specified multiple times; Tinyproxy will try each address in the order listed.
+
+  ```ini
+  Bind 192.168.0.1
+  ```
+</ParamField>
+
+<ParamField query="BindSame" type="boolean">
+  When set to `yes`, Tinyproxy binds each outgoing connection to the same IP address as the incoming connection that triggered it. Accepted values: `yes`, `on`, `no`, `off`.
+
+  ```ini
+  BindSame yes
+  ```
+</ParamField>
+
+<ParamField query="Timeout" type="integer">
+  The maximum number of seconds a connection may remain idle before Tinyproxy closes it. **Default: `600`** seconds.
+
+  ```ini
+  Timeout 600
+  ```
+</ParamField>
+
+<ParamField query="MaxClients" type="integer">
+  The absolute maximum number of simultaneous client connections. Tinyproxy creates one thread per connected client; once `MaxClients` threads are active, new connection attempts are rejected until an existing connection closes. **Default: `100`**.
+
+  ```ini
+  MaxClients 100
+  ```
+</ParamField>
+
+---
+
+## Logging
+
+<ParamField query="LogFile" type="string (quoted path)">
+  The path to the file where Tinyproxy writes log output. The path must be enclosed in double quotes. This directive is mutually exclusive with `Syslog`. If neither `LogFile` nor `Syslog` is set, log output goes to stdout.
+
+  ```ini
+  LogFile "/var/log/tinyproxy/tinyproxy.log"
+  ```
+</ParamField>
+
+<ParamField query="Syslog" type="boolean">
+  When set to `On`, Tinyproxy sends log messages to syslog rather than to a `LogFile`. This directive is mutually exclusive with `LogFile`. Accepted values: `On`, `Off`.
+
+  ```ini
+  Syslog On
+  ```
+</ParamField>
+
+<ParamField query="LogLevel" type="Critical | Error | Warning | Notice | Connect | Info">
+  Sets the minimum severity of messages to log. Messages at the configured level and **above** (toward `Critical`) are output; messages below it are suppressed. **Default: `Info`** (most verbose).
+
+  | Level | Description |
+  |-------|-------------|
+  | `Critical` | Least verbose — only fatal conditions |
+  | `Error` | Errors that affect operation |
+  | `Warning` | Conditions that may indicate a problem |
+  | `Notice` | Significant informational events |
+  | `Connect` | Logs connections without `Info`-level noise |
+  | `Info` | Most verbose — all messages |
+
+  ```ini
+  LogLevel Warning
+  ```
+</ParamField>
+
+<ParamField query="PidFile" type="string (quoted path)">
+  The path to the file where the main Tinyproxy thread writes its PID. This file is used to send signals (e.g. `SIGUSR1`, `SIGTERM`) to the running daemon. If not specified, no PID file is written.
+
+  ```ini
+  PidFile "/run/tinyproxy/tinyproxy.pid"
+  ```
+</ParamField>
+
+---
+
+## Error & Stats Pages
+
+<ParamField query="ErrorFile" type="integer http-error-code, string (quoted path)">
+  Maps a specific HTTP error code to a custom HTML template file that Tinyproxy returns when that error occurs. Takes two arguments: the numeric HTTP status code and the quoted path to the HTML file. This directive may appear multiple times to map multiple error codes.
+
+  ```ini
+  ErrorFile 400 "/usr/share/tinyproxy/400.html"
+  ErrorFile 403 "/usr/share/tinyproxy/403.html"
+  ErrorFile 408 "/usr/share/tinyproxy/408.html"
+  ErrorFile 502 "/usr/share/tinyproxy/502.html"
+  ErrorFile 503 "/usr/share/tinyproxy/503.html"
+  ```
+</ParamField>
+
+<ParamField query="DefaultErrorFile" type="string (quoted path)">
+  The HTML template file returned when an HTTP error occurs for which no specific `ErrorFile` mapping exists. The path must be enclosed in double quotes.
+
+  ```ini
+  DefaultErrorFile "/usr/share/tinyproxy/default.html"
+  ```
+</ParamField>
+
+<ParamField query="StatHost" type="string (quoted)">
+  The hostname or IP address that Tinyproxy treats as the statistics host. Any HTTP request targeting this host is intercepted and answered with the internal statistics page rather than forwarded upstream. The default value is `tinyproxy.stats`. Enclose in double quotes.
+
+  ```ini
+  StatHost "tinyproxy.stats"
+  ```
+</ParamField>
+
+<ParamField query="StatFile" type="string (quoted path)">
+  The HTML template file returned when a request is made to the `StatHost`. Enclose the path in double quotes. If this directive is not set, Tinyproxy returns a hard-coded statistics page. The template supports the same template variables (e.g. `{version}`, `{request}`) as error pages — see the [Template Variables](/reference/template-variables) reference.
+
+  ```ini
+  StatFile "/usr/share/tinyproxy/stats.html"
+  ```
+</ParamField>
+
+---
+
+## Headers
+
+<ParamField query="XTinyproxy" type="boolean">
+  When set to `Yes`, Tinyproxy adds an `X-Tinyproxy` header to forwarded requests containing the client's IP address. Accepted values: `Yes`, `No`.
+
+  <Note>
+    `XTinyproxy` requires Tinyproxy to be compiled with `--enable-xtinyproxy`. If the binary was built without this flag and the directive is set to `Yes`, Tinyproxy will refuse to start.
+  </Note>
+
+  ```ini
+  XTinyproxy Yes
+  ```
+</ParamField>
+
+<ParamField query="ViaProxyName" type="string (quoted)">
+  RFC 2616 requires proxies to add a `Via` header to HTTP requests. By default, Tinyproxy uses the server's real hostname in this header. Setting `ViaProxyName` substitutes the real hostname with the given string, which avoids disclosing internal hostnames. Enclose in double quotes.
+
+  ```ini
+  ViaProxyName "tinyproxy"
+  ```
+</ParamField>
+
+<ParamField query="DisableViaHeader" type="boolean">
+  When set to `Yes`, Tinyproxy omits the `Via` header entirely from forwarded requests, effectively placing it in stealth mode. Accepted values: `Yes`, `No`.
+
+  <Warning>
+    RFC 2616 requires proxies to include the `Via` header. Enabling `DisableViaHeader` breaks HTTP compliance. Do not enable this unless you fully understand the implications.
+  </Warning>
+
+  ```ini
+  DisableViaHeader Yes
+  ```
+</ParamField>
+
+<ParamField query="AddHeader" type="string name, string value">
+  Adds a custom HTTP request header to all outgoing HTTP requests that Tinyproxy forwards. Both the header name and the value must be enclosed in double quotes. This directive may be specified multiple times to add multiple headers.
+
+  <Note>
+    `AddHeader` does not apply to HTTPS traffic. Because HTTPS connections are tunneled via CONNECT, Tinyproxy has no visibility into the inner headers.
+  </Note>
+
+  ```ini
+  AddHeader "X-My-Header" "Powered by Tinyproxy"
+  ```
+</ParamField>
+
+---
+
+## Access Control
+
+<ParamField query="Allow" type="IP / CIDR / hostname">
+  Grants access to clients matching the specified address. The argument may be a single IPv4 address (`127.0.0.1`), an IPv6 address (`::1`), a CIDR range (`192.168.0.0/24`), a full hostname (`host.example.com`), or a domain suffix (`.example.com`). This directive may appear multiple times.
+
+  Rules are evaluated in file order. If any `Allow` or `Deny` rule is present, the **default action is to deny** all connections not explicitly matched. If neither directive appears, all clients are allowed.
+
+  <Note>
+    Using a hostname or domain name forces a DNS lookup for every new connection. On high-traffic deployments, prefer IP address rules where possible.
+  </Note>
+
+  ```ini
+  Allow 127.0.0.1
+  Allow ::1
+  Allow 192.168.1.0/24
+  ```
+</ParamField>
+
+<ParamField query="Deny" type="IP / CIDR / hostname">
+  Denies access to clients matching the specified address. Accepts the same argument formats as `Allow`. Rules are evaluated in file order; the last matching rule wins.
+
+  ```ini
+  Deny 10.0.0.5
+  Deny .badactor.example.com
+  ```
+</ParamField>
+
+<ParamField query="BasicAuth" type="string user, string password">
+  Configures an HTTP Basic Authentication credential pair for proxy access. When one or more `BasicAuth` entries are present, unauthenticated requests receive a `407 Proxy Authentication Required` response. This directive may appear multiple times to allow multiple users. Unlike most string values, the username and password are **not** enclosed in quotes.
+
+  ```ini
+  BasicAuth alice s3cr3t
+  BasicAuth bob another_password
+  ```
+</ParamField>
+
+<ParamField query="BasicAuthRealm" type="string (quoted)">
+  Customizes the realm string included in the `407 Proxy Authentication Required` response when `BasicAuth` is configured. If not set, defaults to `Tinyproxy` (the package name). Enclose in double quotes.
+
+  ```ini
+  BasicAuthRealm "Corporate Proxy"
+  ```
+</ParamField>
+
+<ParamField query="ConnectPort" type="integer">
+  Restricts which destination ports are permitted when a client uses the `CONNECT` method (used for HTTPS tunneling). This directive may appear multiple times. If no `ConnectPort` lines are present, all destination ports are allowed. Set the value to `0` to disable the `CONNECT` method entirely.
+
+  ```ini
+  ConnectPort 443
+  ConnectPort 563
+  ```
+</ParamField>
+
+---
+
+## Filtering
+
+<Note>
+  The directives in this section require Tinyproxy to be compiled with `--enable-filter`. If the binary was built without filter support and a `Filter` directive is present, Tinyproxy will print an error and refuse to start.
+</Note>
+
+<ParamField query="Filter" type="string (quoted path)">
+  The path to the file containing URL or domain filter rules, one rule per line. Comment lines begin with `#`. By default, rules are interpreted as POSIX basic regular expressions (BRE); this can be changed with `FilterType`.
+
+  ```ini
+  Filter "/etc/tinyproxy/filter"
+  ```
+
+  Example filter file:
+
+  ```text
+  # Block exactly cnn.com
+  ^cnn\.com$
+
+  # Block all subdomains of cnn.com
+  .*\.cnn\.com$
+
+  # Block any domain starting with adserver
+  ^adserver
+  ```
+</ParamField>
+
+<ParamField query="FilterType" type="bre | ere | fnmatch">
+  Controls how rules in the `Filter` file are interpreted. **Default: `bre`**.
+
+  | Value | Matching method |
+  |-------|-----------------|
+  | `bre` | POSIX basic regular expressions |
+  | `ere` | POSIX extended regular expressions |
+  | `fnmatch` | Shell-style glob patterns (e.g. `*.google.com`) — fastest option and recommended for third-party filter lists |
+
+  ```ini
+  FilterType fnmatch
+  ```
+</ParamField>
+
+<ParamField query="FilterURLs" type="boolean">
+  When set to `Yes` or `On`, filter rules are matched against the full URL rather than just the domain name. **Default: `No`** (domain-based filtering).
+
+  <Note>
+    URL filtering only works for plain HTTP traffic. Because HTTPS has become ubiquitous, URL-based filtering will be ineffective on the vast majority of modern sites. Domain-based filtering is strongly recommended.
+  </Note>
+
+  ```ini
+  FilterURLs On
+  ```
+</ParamField>
+
+<ParamField query="FilterCaseSensitive" type="boolean">
+  When set to `Yes`, filter rule matching is case-sensitive. **Default: `No`** (case-insensitive). Enabling case-sensitive matching improves matching speed by approximately 2×. This setting applies only to `bre` and `ere` filter types; `fnmatch` matching is always case-sensitive.
+
+  ```ini
+  FilterCaseSensitive Yes
+  ```
+</ParamField>
+
+<ParamField query="FilterDefaultDeny" type="boolean">
+  Controls the default filtering policy. When set to `No` (the default), the filter list acts as a **blocklist** — everything is allowed except what is matched by a rule. When set to `Yes`, the filter list acts as a **allowlist** — everything is blocked except what is matched.
+
+  ```ini
+  FilterDefaultDeny Yes
+  ```
+</ParamField>
+
+<Warning>
+  **`FilterExtended` is deprecated.** Use `FilterType ere` instead. If `FilterExtended Yes` is set, Tinyproxy will emit a deprecation warning and enable ERE matching, but you should migrate to the explicit `FilterType` directive.
+</Warning>
+
+---
+
+## Anonymous Proxying
+
+<ParamField query="Anonymous" type="string (quoted header name)">
+  Enables anonymous proxying mode. When one or more `Anonymous` directives are present, **only** the listed HTTP headers are forwarded to upstream servers; all other headers are stripped from the request. If no `Anonymous` directive is present, all headers are forwarded. Each header name must be enclosed in double quotes. The directive may appear multiple times.
+
+  Most websites require cookies to function correctly. To allow cookie-bearing sessions through an anonymous proxy, include `"Cookie"` in your `Anonymous` list.
+
+  ```ini
+  Anonymous "Host"
+  Anonymous "Authorization"
+  Anonymous "Cookie"
+  ```
+</ParamField>
+
+---
+
+## Upstream Proxying
+
+<Note>
+  The `Upstream` directive requires Tinyproxy to be compiled with `--enable-upstream`.
+</Note>
+
+<ParamField query="Upstream" type='type host:port ["site_spec"]'>
+  Configures rules for routing outgoing connections through one or more upstream proxy servers. Rules are evaluated in file order and **the last matching rule wins**. The `type` field may be `http`, `socks4`, `socks5`, or `none`.
+
+  **Forms:**
+
+  - `upstream type host:port` — route all traffic through the specified proxy.
+  - `upstream type user:pass@host:port` — same, with Basic Authentication credentials.
+  - `upstream type host:port "site_spec"` — route traffic for matching sites only.
+  - `upstream none "site_spec"` — bypass the upstream proxy for matching sites (direct connection).
+
+  A `site_spec` is a quoted string that can be:
+  - A full hostname (`"www.example.com"`) — exact match
+  - A domain suffix (`".example.com"`) — matches any host in the domain
+  - `.` — matches any host with no domain
+  - An IP/bits network range (`"192.168.0.0/24"`)
+  - An IP/mask network range (`"192.168.0.0/255.255.255.0"`)
+
+  IPv6 upstream addresses must be enclosed in square brackets.
+
+  ```ini
+  # Route all traffic through a corporate HTTP proxy
+  Upstream http proxy.corp.example.com:8080
+
+  # Use SOCKS5 for Tor
+  Upstream socks5 127.0.0.1:9050
+
+  # Bypass upstream for internal domains (direct connection)
+  Upstream none ".internal.example.com"
+  Upstream none "10.0.0.0/8"
+
+  # Null-route an ad server domain
+  Upstream http 0.0.0.0:0 ".adserver.com"
+  ```
+</ParamField>
+
+---
+
+## Reverse Proxying
+
+<Note>
+  The directives in this section require Tinyproxy to be compiled with `--enable-reverse`.
+</Note>
+
+<ParamField query="ReversePath" type="string path, string url">
+  Defines a reverse proxy mapping. Requests to Tinyproxy whose path begins with the first argument are forwarded to the URL given in the second argument. Both arguments must be enclosed in double quotes. This directive may appear multiple times to map multiple paths.
+
+  ```ini
+  ReversePath "/example/" "http://www.example.com/"
+  ```
+</ParamField>
+
+<ParamField query="ReverseOnly" type="boolean">
+  When set to `Yes`, disables forward proxy functionality entirely, leaving Tinyproxy operating purely as a reverse proxy. This is **strongly recommended** when using Tinyproxy as a reverse proxy to prevent it from being used as an open proxy.
+
+  ```ini
+  ReverseOnly Yes
+  ```
+</ParamField>
+
+<ParamField query="ReverseMagic" type="boolean">
+  When set to `Yes`, Tinyproxy uses a session cookie to track reverse proxy path mappings. This is required when reverse-proxying sites that contain absolute links, since without cookie tracking the browser would follow the absolute link and escape the proxy.
+
+  ```ini
+  ReverseMagic Yes
+  ```
+</ParamField>
+
+<ParamField query="ReverseBaseURL" type="string (quoted URL)">
+  The public-facing URL at which this reverse proxy is accessible. Tinyproxy uses this value to rewrite HTTP redirect responses so that they continue to point through the proxy rather than directly to the upstream server. If you have a chain of reverse proxies, specify the outermost URL here. If not set, redirect rewriting is disabled.
+
+  ```ini
+  ReverseBaseURL "http://localhost:8888/"
+  ```
+</ParamField>
+
+---
+
+## Complete Example Configuration
+
+The following is an annotated minimal configuration suitable for a local forward proxy:
+
+```ini
+##
+## tinyproxy.conf — example configuration
+##
+
+# Drop privileges after binding
+User nobody
+Group nobody
+
+# Listen on port 8888 on all interfaces
+Port 8888
+
+# Close idle connections after 10 minutes
+Timeout 600
+
+# Allow up to 100 simultaneous clients
+MaxClients 100
+
+# Log to file at Warning level
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Warning
+
+# Write PID for signal delivery
+PidFile "/run/tinyproxy/tinyproxy.pid"
+
+# Only allow connections from localhost
+Allow 127.0.0.1
+Allow ::1
+
+# Restrict CONNECT to HTTPS ports only
+ConnectPort 443
+ConnectPort 563
+
+# Identify the Via header with a generic name
+ViaProxyName "tinyproxy"
+
+# Custom error and stats pages
+DefaultErrorFile "/usr/share/tinyproxy/default.html"
+StatFile "/usr/share/tinyproxy/stats.html"
+```

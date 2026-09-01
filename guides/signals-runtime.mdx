@@ -1,0 +1,165 @@
+---
+title: "Runtime Control: Signals and Process Management"
+sidebarTitle: "Signals & Runtime"
+description: "Send POSIX signals to a running Tinyproxy daemon to reload configuration, garbage collect connections, and manage the process lifecycle."
+---
+
+Tinyproxy is a long-running daemon and, like most POSIX services, exposes its runtime controls through signals. Rather than stopping and restarting the process to pick up a new configuration or clear stale connection state, you can send the appropriate signal to the running process and Tinyproxy responds immediately — without interrupting active proxy connections. This guide covers every signal Tinyproxy handles, how to send them using the PID file, and how to integrate Tinyproxy with service supervisors such as systemd.
+
+## Supported Signals
+
+### SIGHUP — Garbage Collection
+
+`SIGHUP` instructs Tinyproxy to perform an immediate garbage collection pass on its internal connections linked list. Stale or closed connection records that have not yet been freed are released.
+
+Under normal operation this cleanup happens automatically after a certain number of connections have been processed. Sending `SIGHUP` forces it on demand, which can be useful when memory use appears elevated or you want to ensure clean connection state before a maintenance window.
+
+```
+Signal:   SIGHUP
+Effect:   Force garbage collection on the connections linked list
+Note:     Effective in daemon mode only
+```
+
+### SIGUSR1 — Configuration and Filter Reload
+
+`SIGUSR1` tells Tinyproxy to re-read `tinyproxy.conf` and reload the filter list from the path specified in the `Filter` directive. The reload applies to the live running process — active connections are not dropped.
+
+This is the primary mechanism for applying configuration changes without a service restart. Any directive that can be changed at runtime (log level, filter rules, allow/deny lists, and so on) takes effect immediately after the signal is processed.
+
+```
+Signal:   SIGUSR1
+Effect:   Reload configuration file and filter list
+Note:     Active connections are preserved during the reload
+```
+
+<Note>
+  `SIGUSR1` is particularly handy when Tinyproxy is running in foreground mode
+  (`-d`). Because there is no service manager to restart the process, sending
+  `SIGUSR1` is the only way to apply configuration changes without stopping the
+  proxy entirely. It is also used as part of log rotation — see the
+  [Logging & Monitoring](/guides/logging-monitoring) guide.
+</Note>
+
+### SIGTERM / SIGINT — Graceful Shutdown
+
+`SIGTERM` (the default signal sent by `kill`) and `SIGINT` (sent by Ctrl+C when running in the foreground) both trigger a graceful shutdown. Tinyproxy stops accepting new connections and exits.
+
+```
+Signal:   SIGTERM or SIGINT
+Effect:   Graceful shutdown — stop accepting connections and exit
+```
+
+### SIGCHLD — Internal Child Reaping
+
+`SIGCHLD` is handled internally by Tinyproxy to reap terminated worker threads and child processes. It is not intended to be sent manually; the kernel delivers it automatically when a child process exits.
+
+## Sending Signals
+
+The standard approach is to read the PID from the file written by Tinyproxy and pass it to `kill`. Ensure `PidFile` is configured in `tinyproxy.conf` (see the [Logging & Monitoring](/guides/logging-monitoring) guide):
+
+```ini
+PidFile "/run/tinyproxy/tinyproxy.pid"
+```
+
+With the PID file in place, signals can be sent as follows:
+
+```bash
+# Reload configuration file and filter list
+kill -USR1 $(cat /run/tinyproxy/tinyproxy.pid)
+
+# Force garbage collection on the connections linked list
+kill -HUP $(cat /run/tinyproxy/tinyproxy.pid)
+
+# Graceful shutdown
+kill $(cat /run/tinyproxy/tinyproxy.pid)
+```
+
+On systems that provide `killproc` or `pidof`, you can use those as alternatives. Most service managers (systemd, OpenRC, s6) have their own mechanisms for sending signals to managed services — see the sections below.
+
+## Service Readiness Notification
+
+Tinyproxy supports the `-n fd` flag (where `fd` is an open file descriptor number) for service supervisor integration. After completing initialisation — binding to the port, loading the configuration, and setting up logging — Tinyproxy writes a single newline character to the specified open file descriptor and then closes it. A supervisor that holds the write end of a pipe on that descriptor can block until it receives the newline, and only then declare the service ready and proceed with dependent units.
+
+```
+-n fd   Write a newline to the open file descriptor fd after initialization,
+        then close it. Used to notify a service supervisor that Tinyproxy is ready.
+```
+
+This is a lightweight alternative to `sd_notify` and works with any supervisor that can provide an open file descriptor.
+
+## Running with systemd
+
+The following unit file uses `Type=notify` with a pipe-based readiness mechanism. The `ExecStartPost` command waits for Tinyproxy to signal readiness via file descriptor 3, which is opened by systemd and passed through.
+
+For simpler deployments, `Type=simple` with a short `ExecStartPost` sleep is often sufficient:
+
+```ini /etc/systemd/system/tinyproxy.service
+[Unit]
+Description=Tinyproxy HTTP Proxy Daemon
+After=network.target
+Documentation=man:tinyproxy(8) man:tinyproxy.conf(5)
+
+[Service]
+Type=simple
+User=nobody
+Group=nobody
+ExecStart=/usr/bin/tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf
+ExecReload=/bin/kill -USR1 $MAINPID
+PIDFile=/run/tinyproxy/tinyproxy.pid
+RuntimeDirectory=tinyproxy
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Key points in this unit:
+
+- `ExecStart` uses `-d` (foreground) so systemd can track the process directly — no daemonisation is needed when a service manager is present.
+- `ExecReload` sends `SIGUSR1` via `$MAINPID` to reload configuration without restarting.
+- `RuntimeDirectory=tinyproxy` tells systemd to create `/run/tinyproxy` with correct ownership before the service starts, satisfying the `PidFile` directory requirement.
+
+Enable and start the service:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now tinyproxy
+
+# Reload configuration after editing tinyproxy.conf
+systemctl reload tinyproxy
+
+# Check status and recent log output
+systemctl status tinyproxy
+```
+
+## Running in Foreground
+
+The `-d` flag prevents Tinyproxy from forking into the background. Log output goes to stdout (unless `LogFile` or `Syslog` is configured) and the process remains attached to the terminal:
+
+```bash
+tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf
+```
+
+Foreground mode is useful in several contexts:
+
+- **Interactive debugging** — you can watch log output in real time and stop the proxy with Ctrl+C.
+- **Docker containers** — container runtimes expect the primary process to stay in the foreground. Running with `-d` keeps Tinyproxy as PID 1 (or a direct child) without a separate init.
+- **Process supervisors** — tools like `supervisord`, `s6`, and `runit` manage processes that run in the foreground and restart them automatically on failure.
+
+```dockerfile
+# Minimal Dockerfile example
+FROM debian:stable-slim
+RUN apt-get update && apt-get install -y tinyproxy && rm -rf /var/lib/apt/lists/*
+COPY tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+EXPOSE 8888
+CMD ["tinyproxy", "-d", "-c", "/etc/tinyproxy/tinyproxy.conf"]
+```
+
+When running in foreground mode, use `SIGUSR1` to apply configuration changes without stopping the container or process:
+
+```bash
+# Inside the container or from the host
+kill -USR1 $(cat /run/tinyproxy/tinyproxy.pid)
+```

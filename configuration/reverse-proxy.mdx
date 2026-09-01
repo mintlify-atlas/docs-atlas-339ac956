@@ -1,0 +1,102 @@
+---
+title: "Configure Tinyproxy as a Reverse Proxy"
+sidebarTitle: "Reverse Proxy"
+description: "Use Tinyproxy's reverse proxy mode to aggregate multiple back-end sites behind a single endpoint. Configure path-based routing and redirect rewriting."
+---
+
+Tinyproxy can operate as a reverse proxy, sitting in front of one or more back-end servers and making them appear as parts of a single site. Clients connect to Tinyproxy and request URLs under paths that Tinyproxy maps to back-end server URLs. This lets you consolidate multiple services behind a single hostname and port without the clients needing to know about the individual back ends.
+
+<Note>
+  Reverse proxy support is a compile-time option. Your Tinyproxy binary must have been built with `--enable-reverse`. If reverse proxy directives are present in your configuration but this feature was not compiled in, Tinyproxy will print an error and refuse to start.
+</Note>
+
+## How It Works
+
+Each `ReversePath` directive creates a mapping from a URL prefix (a path on the Tinyproxy endpoint) to a back-end URL. When Tinyproxy receives a request whose path matches a configured prefix, it strips the prefix, appends the remainder to the back-end URL, and forwards the request to the back end. The response is then returned to the client transparently.
+
+For example, with the mapping `ReversePath "/app/" "http://backend.internal:8080/"`, a client request for `http://proxy:8888/app/index.html` is forwarded to `http://backend.internal:8080/index.html`.
+
+Paths are matched against the request URL from the beginning. Tinyproxy walks the list of `ReversePath` rules and uses the first rule whose path is a prefix of the requested URL. If no rule matches, Tinyproxy returns an error (or falls through to forward proxy mode if `ReverseOnly` is not set).
+
+## Reverse Proxy Directives
+
+<ParamField body="ReversePath" type="string string">
+  Maps a URL path prefix to a back-end URL. Both arguments must be enclosed in double quotes. The path must start with `/`. Multiple `ReversePath` directives can be specified to route different paths to different back ends.
+
+  The trailing slash on both the path and the back-end URL is significant — include it to ensure subpaths are correctly forwarded:
+
+  ```ini
+  ReversePath "/example/" "http://www.example.com/"
+  ```
+
+  With this rule, a request for `/example/about` is forwarded to `http://www.example.com/about`.
+</ParamField>
+
+<ParamField body="ReverseOnly" type="boolean">
+  When set to `Yes`, disables Tinyproxy's normal forward proxy functionality entirely. Clients can only reach destinations covered by a `ReversePath` rule; arbitrary forward proxy requests are rejected. This is the correct setting for a dedicated reverse proxy deployment.
+
+  ```ini
+  ReverseOnly Yes
+  ```
+</ParamField>
+
+<ParamField body="ReverseMagic" type="boolean">
+  When set to `Yes`, Tinyproxy sets a tracking cookie (`yummy_magical_cookie`) on responses to remember which `ReversePath` rule was used for a given client session. This allows Tinyproxy to correctly route subsequent requests that use absolute paths (i.e., paths that do not include the Tinyproxy path prefix), which occur when back-end sites generate links like `/images/logo.png` instead of relative paths.
+
+  ```ini
+  ReverseMagic Yes
+  ```
+</ParamField>
+
+<ParamField body="ReverseBaseURL" type="string">
+  The publicly reachable URL of the Tinyproxy reverse proxy itself. This value is used to **rewrite HTTP redirect responses** from back-end servers so that redirects do not escape the proxy. If a back-end returns `Location: http://backend.internal:8080/new-page`, Tinyproxy rewrites it to `http://proxy:8888/app/new-page` using `ReverseBaseURL` and the matching `ReversePath`.
+
+  In a chain of reverse proxies, set `ReverseBaseURL` to the URL the end user's browser actually types — the outermost URL in the chain. The value must be enclosed in double quotes.
+
+  ```ini
+  ReverseBaseURL "http://proxy.example.com:8888/"
+  ```
+
+  If this directive is omitted, no redirect rewriting occurs.
+</ParamField>
+
+## Basic Example
+
+The following is a complete, functional reverse proxy configuration. It maps two path prefixes to two different back-end servers, disables forward proxying, and enables magic cookie tracking and redirect rewriting:
+
+```ini tinyproxy.conf
+Port 8888
+
+# Map /google/ to Google and /example/ to example.com
+ReversePath "/google/"  "http://www.google.com/"
+ReversePath "/example/" "http://www.example.com/"
+
+# Disable forward proxy mode — only reverse proxy rules are active
+ReverseOnly Yes
+
+# Enable magic cookie tracking for sites with absolute links
+ReverseMagic Yes
+
+# Rewrite redirects to stay within the proxy
+ReverseBaseURL "http://localhost:8888/"
+```
+
+With this configuration running on port 8888, a client can access:
+- `http://localhost:8888/google/` → proxied from `http://www.google.com/`
+- `http://localhost:8888/example/` → proxied from `http://www.example.com/`
+
+## Redirect Rewriting
+
+When a back-end server issues an HTTP redirect (status `301`, `302`, or similar), the `Location` header normally contains an absolute URL pointing directly at the back end. If a client follows that URL directly, it bypasses the reverse proxy entirely.
+
+`ReverseBaseURL` solves this by telling Tinyproxy the base URL it is known by externally. When Tinyproxy sees a redirect from a back-end URL that matches one of its `ReversePath` rules, it rewrites the `Location` header so the redirect stays within the proxy.
+
+In a multi-proxy chain — for example, a load balancer in front of multiple Tinyproxy instances, each in front of their own back ends — set `ReverseBaseURL` to the address the end user sees (the load balancer's URL), not the address of the individual Tinyproxy instance.
+
+<Warning>
+  Always set `ReverseOnly Yes` in a reverse proxy deployment. Without it, Tinyproxy also accepts arbitrary forward proxy requests, meaning anyone who can reach the proxy port can use it to access any host on the internet. If the proxy is on a publicly reachable address, omitting `ReverseOnly Yes` creates an open proxy.
+</Warning>
+
+<Tip>
+  Enable `ReverseMagic Yes` whenever a back-end site uses absolute links (links that start with `/` rather than a relative path). Without it, clicking an absolute link like `/search` on a site proxied under `/google/` would result in a request for `/search` directly, which would not match any `ReversePath` rule and would fail. The magic tracking cookie keeps the client associated with the correct back-end mapping across absolute-path navigations.
+</Tip>

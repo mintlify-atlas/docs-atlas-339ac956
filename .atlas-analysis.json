@@ -1,0 +1,89 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Tinyproxy",
+  "projectDescription": "A light-weight HTTP/HTTPS proxy daemon for POSIX operating systems, designed for minimal resource usage in small network environments.",
+  "theme": "aspen",
+  "primaryColor": "#0090ff",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/access-control",
+              "configuration/filtering",
+              "configuration/upstream-proxies",
+              "configuration/reverse-proxy"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/transparent-proxy",
+              "guides/anonymous-proxy",
+              "guides/authentication",
+              "guides/logging-monitoring",
+              "guides/signals-runtime"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/tinyproxy-cli",
+              "reference/configuration-options",
+              "reference/template-variables"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Lightweight HTTP/HTTPS proxy with minimal resource consumption",
+    "Access control lists (ACL) with IP address and domain-based rules",
+    "URL and domain filtering with regex (BRE/ERE) and fnmatch support",
+    "Upstream proxy chaining with HTTP, SOCKS4, and SOCKS5 support",
+    "Transparent proxy mode via firewall redirection",
+    "Reverse proxy support for aggregating multiple sites",
+    "HTTP Basic Authentication for proxy access",
+    "Anonymous proxying mode with selective header forwarding",
+    "Built-in statistics page (StatHost)",
+    "Configurable logging to file or syslog",
+    "Connection buffering for improved client performance"
+  ],
+  "publicApiSurface": [
+    "tinyproxy -c <config-file>",
+    "tinyproxy -d (foreground mode)",
+    "tinyproxy -v (version)",
+    "tinyproxy -h (help)",
+    "tinyproxy -n <fd> (notify readiness)",
+    "SIGHUP (garbage collect connections)",
+    "SIGUSR1 (reload config and filter list)",
+    "User / Group",
+    "Port / Listen / Bind / BindSame",
+    "Timeout / MaxClients",
+    "Allow / Deny",
+    "BasicAuth / BasicAuthRealm",
+    "Filter / FilterType / FilterURLs / FilterCaseSensitive / FilterDefaultDeny",
+    "Upstream http|socks4|socks5|none",
+    "ReversePath / ReverseOnly / ReverseMagic / ReverseBaseURL",
+    "Anonymous",
+    "ConnectPort",
+    "AddHeader / ViaProxyName / DisableViaHeader / XTinyproxy",
+    "LogFile / Syslog / LogLevel / PidFile",
+    "StatHost / StatFile / ErrorFile / DefaultErrorFile"
+  ]
+}

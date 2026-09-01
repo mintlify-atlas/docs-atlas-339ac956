@@ -1,20 +1,64 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Tinyproxy: Lightweight HTTP/HTTPS Proxy Daemon"
+sidebarTitle: "Home"
+description: "Tinyproxy is a fast, minimal HTTP/HTTPS proxy daemon for POSIX systems. Low memory footprint, flexible ACLs, filtering, upstream chaining, and reverse proxy support."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Tinyproxy is a light-weight HTTP/HTTPS proxy daemon built for POSIX operating systems. It is designed to consume a minimum of system resources, making it ideal for embedded deployments, small networks, and constrained environments where a full-featured proxy would be too resource-intensive or pose a security risk. Version 1.11.3 is the current stable release.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Build from source or install via your system package manager in minutes.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Configure and run Tinyproxy for the first time with a minimal working setup.
+  </Card>
+  <Card title="Configuration Reference" icon="sliders" href="/reference/configuration-options">
+    Complete reference for every configuration directive in tinyproxy.conf.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/reference/tinyproxy-cli">
+    Command-line flags, signals, and runtime controls for the tinyproxy daemon.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Access Control" icon="shield-halved" href="/configuration/access-control">
+    Allow or deny clients by IP address, CIDR range, or hostname with ordered ACL rules.
+  </Card>
+  <Card title="Domain & URL Filtering" icon="filter" href="/configuration/filtering">
+    Block or allow sites using POSIX regex (BRE/ERE) or fnmatch pattern rules.
+  </Card>
+  <Card title="Upstream Proxy Chaining" icon="link" href="/configuration/upstream-proxies">
+    Route traffic through HTTP, SOCKS4, or SOCKS5 upstream proxies per-domain.
+  </Card>
+  <Card title="Reverse Proxy" icon="arrows-rotate" href="/configuration/reverse-proxy">
+    Aggregate multiple back-end sites behind a single Tinyproxy endpoint.
+  </Card>
+  <Card title="Transparent Proxy" icon="eye-slash" href="/guides/transparent-proxy">
+    Intercept traffic silently using firewall redirection — no client configuration needed.
+  </Card>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Require HTTP Basic Authentication before clients can use the proxy.
+  </Card>
+</CardGroup>
+
+## How Tinyproxy Works
+
+Tinyproxy listens on a TCP port and handles HTTP proxy requests. One of its key features is **connection buffering**: it buffers a high-speed response from the origin server and relays it to the client at the highest speed the client will accept. This reduces sluggishness when sharing an internet connection across a small network.
+
+<Steps>
+  <Step title="Install Tinyproxy">
+    Build from source using the GNU autotools build system, or install a pre-built package for your distribution. See [Installation](/installation).
+  </Step>
+  <Step title="Write a configuration file">
+    Create `/etc/tinyproxy/tinyproxy.conf` specifying at minimum the `Port` and `Allow` directives. See [Configuration Overview](/configuration/overview).
+  </Step>
+  <Step title="Start the daemon">
+    Run `tinyproxy -c /etc/tinyproxy/tinyproxy.conf` to start. Use `-d` to keep it in the foreground during testing.
+  </Step>
+  <Step title="Point your client at the proxy">
+    Configure your browser or application to use `http://127.0.0.1:8888` as its HTTP proxy and start making requests.
+  </Step>
+</Steps>
